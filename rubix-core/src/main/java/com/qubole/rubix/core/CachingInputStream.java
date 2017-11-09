@@ -88,6 +88,7 @@ public class CachingInputStream
         this.remotePath = backendPath.toString();
         FileStatus fileStatus = parentFs.getFileStatus(backendPath);
         this.fileSize = fileStatus.getLen();
+        log.debug(" FileSize of remotePath : " + backendPath.toString() + " is : " + fileSize);
         this.remoteFileSystem = remoteFileSystem;
         lastModified = fileStatus.getModificationTime();
         initialize(conf, bookKeeperFactory);
@@ -321,6 +322,7 @@ public class CachingInputStream
         }
 
         int idx = 0;
+        log.debug(" Iterating from startBlock : " + nextReadBlock + " to End block : " + endBlock);
         for (long blockNum = nextReadBlock; blockNum < endBlock; blockNum++, idx++) {
             long backendReadStart = blockNum * blockSize;
             long backendReadEnd = (blockNum + 1) * blockSize;
