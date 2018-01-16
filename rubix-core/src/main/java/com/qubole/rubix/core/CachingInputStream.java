@@ -230,7 +230,7 @@ public class CachingInputStream
             throws IOException, InterruptedException, ExecutionException
 
     {
-        log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
+        log.info(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
 
         if (nextReadPosition >= fileSize) {
             log.debug("Already at eof, returning");
@@ -305,6 +305,7 @@ public class CachingInputStream
         DirectReadRequestChain directReadRequestChain = null;
         RemoteReadRequestChain remoteReadRequestChain = null;
         CachedReadRequestChain cachedReadRequestChain = null;
+        FastCachedReadRequestChain fastCachedReadRequestChain = null;
         Map<String, NonLocalReadRequestChain> nonLocalRequests = new HashMap<>();
         ImmutableList.Builder chainedReadRequestChainBuilder = ImmutableList.builder();
 
@@ -367,10 +368,18 @@ public class CachingInputStream
                     if (directReadBuffer == null) {
                         directReadBuffer = bufferPool.getBuffer(diskReadBufferSize);
                     }
-                    if (cachedReadRequestChain == null) {
-                        cachedReadRequestChain = new CachedReadRequestChain(localPath, directReadBuffer, statistics);
+                    if (!CacheConfig.isFastCacheReadEnabled(conf)) {
+                        if (cachedReadRequestChain == null) {
+                            cachedReadRequestChain = new CachedReadRequestChain(localPath, directReadBuffer, statistics);
+                        }
+                        cachedReadRequestChain.addReadRequest(readRequest);
                     }
-                    cachedReadRequestChain.addReadRequest(readRequest);
+                    else {
+                        if (fastCachedReadRequestChain == null) {
+                            fastCachedReadRequestChain = new FastCachedReadRequestChain(localPath, statistics, conf);
+                        }
+                        fastCachedReadRequestChain.addReadRequest(readRequest);
+                    }
                 }
                 catch (IOException e) {
                     log.error("Unable to open file channel in R mode", e);
@@ -421,6 +430,10 @@ public class CachingInputStream
 
         if (cachedReadRequestChain != null) {
             chainedReadRequestChainBuilder.add(cachedReadRequestChain);
+        }
+
+        if (fastCachedReadRequestChain != null) {
+            chainedReadRequestChainBuilder.add(fastCachedReadRequestChain);
         }
 
         if (directReadRequestChain != null ||
