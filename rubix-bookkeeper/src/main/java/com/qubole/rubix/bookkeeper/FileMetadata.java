@@ -89,6 +89,7 @@ public class FileMetadata
                 mdFile.readFully(bytes, 0, (int) mdFile.length());
             }
             catch (FileNotFoundException e) {
+                log.error("File not found exception for: " + mdFilePath, e);
                 File file = new File(mdFilePath);
                 file.createNewFile();
                 file.setWritable(true, false);
@@ -109,7 +110,14 @@ public class FileMetadata
             throws IOException
     {
         if (needsRefresh) {
-            refreshBitmap();
+            try {
+                refreshBitmap();
+            }
+            catch (IOException e) {
+                // Inconsistent state, reset bitmap to prevent unknown issues
+                blockBitmap = new ByteBufferBitmap(new byte[bitmapFileSizeBytes]);
+                log.error("Could not refresh mdfile in second try for " + remotePath, e);
+            }
         }
         return blockBitmap.isSet((int) blockNumber);
     }
@@ -118,7 +126,14 @@ public class FileMetadata
             throws IOException
     {
         if (needsRefresh) {
-            refreshBitmap();
+          try {
+              refreshBitmap();
+          }
+          catch (IOException e) {
+              // Inconsistent state, reset bitmap to prevent unknown issues
+              blockBitmap = new ByteBufferBitmap(new byte[bitmapFileSizeBytes]);
+              log.error("Could not refresh mdfile in second try for " + remotePath, e);
+          }
         }
 
         blockBitmap.set((int) blockNumber);
