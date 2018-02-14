@@ -3,80 +3,104 @@
 ## Start an EMR Cluster (Optional)
 
 Create EMR cluster, use 'advanced option' to create a cluster with the required spec.
-a) presto should be unchecked, we take a vanila hadoop-hive distribution and install qubole presto on top of it.
-b) Specify atleast 30GB space for Root device EBS volume.
-c) To login into cluster, choose a EC2 key pair.
+a) Specify atleast 30GB space for Root device EBS volume.
+b) To login into cluster, choose a EC2 key pair.
 
-## Install Software on Master Node
+## Connect to Master Node
 
 Log into master and all slave nodes as "hadoop" user.
 
     ssh <key> hadoop@master-public-ip and install required libs.
 
-### JAVA8
-    wget --no-cookies --header "Cookie: gpw_e24=xxx; oraclelicense=accept-securebackup-cookie;" "http://download.oracle.com/otn-pub/java/jdk/8u131-b11/d54c1d3a095b4ff2b6607d096fa80163/jdk-8u131-linux-x64.rpm" 
-    sudo rpm -i jdk-8u131-linux-x64.rpm
+Setup and check passwordless SSH between cluster machines
 
-    # Update JAVA_HOME in ~/.bashrc
-
-### PYTHON26
-
-    sudo yum install python26
-
-
-## Install RubiX Admin
-
-    pip install rubix-admin
-
-## Setup and check passwordless SSH between cluster machines
-   
     ssh hadoop@localhost
     ssh hadoop@worker-public-ip
 
-Create rubix-admin config file at ~/.radminrc, bellow is the sample format.
+## Install RubiX Admin
+
+    pip install rubix_admin
+
+## Update Config File
+
+    rubix_admin -h
+
+This will create rubix-admin config file at ~/.radminrc with the follwoing format
 
     hosts:
       - localhost
       - worker-ip1
-      - worker-ip2 
+      - worker-ip2
       ..
     remote_packages_path: /tmp/rubix_rpms
 
+## Install RubiX
+    rubix_admin installer install
 
-## Install Qubole Presto & RubiX
-    hadoop dfs -get s3://public-qubole/presto/presto-server-rpm-0.180-q1-SNAPSHOT.x86_64.rpm
-    rubix-admin installer install --rpm <path-to-qubole-presto-rpm> <path-to-rubix-rpm> 
+This will install the latest version of RubiX. To install a specific version of Rubix,
 
-## Configure Presto
+    rubix_admin installer install --rpm-version <RubiX Version>
 
-After the installation has completed, update config.properties of *all* the nodes.
-Update /usr/lib/presto/etc/config.properties with the following values,
+To install from a rpm file,
 
-### Master
-    coordinator=true
-    node-scheduler.include-coordinator=false
-    http-server.http.port=8081
-    query.max-memory=10GB
-    query.max-memory-per-node=1GB
-    discovery-server.enabled=true
-    discovery.uri=localhost:8081
-
-### Workers
-    coordinator=false
-    http-server.http.port=8081
-    query.max-memory=10GB
-    query.max-memory-per-node=1GB
-    discovery.uri=http://<master-public-ip>:8081
+    rubix_admin installer install --rpm <path-to-rubix-rpm> 
 
 To enable debugging and see the rubix activity, create /usr/lib/presto/etc/log.properties file with bellow config.
 com.qubole=DEBUG
 
-## Start rubix-daemons & Qubole Presto
-    rubix-admin daemon start --debug
+## Start RubiX Daemons
+    rubix_admin daemon start --debug
     # To verfiy the daemons are up
        verfiy process ids for both 
        BookKeeperServer and LocalDiscoveryServer.
     sudo jps -m
     
-    # start the presto cluster on each node with 
-    /usr/lib/presto/bin/launcher
+## Restart Presto Server
+    sudo restart presto-server
+    
+## Create Table Using Hive
+
+### Start Hive Client
+
+    hive --hiveconf hive.metastore.uris="" --hiveconf fs.rubix.impl=com.qubole.rubix.hadoop2.CachingNativeS3FileSystem
+
+### Create External Table
+
+    CREATE EXTERNAL TABLE wikistats_orc_rubix 
+    (language STRING, page_title STRING,
+    hits BIGINT, retrived_size BIGINT)
+    STORED AS ORC
+    LOCATION 'rubix://emr.presto.airpal/wikistats/orc';
+
+## Start Presto-cli
+    presto-cli --catalog hive --schema default
+
+## Query Execution
+
+Run the following query
+
+    SELECT language, page_title, AVG(hits) AS avg_hits
+    FROM default.wikistats_orc_rubix
+    WHERE language = 'en'
+    AND page_title NOT IN ('Main_Page',  '404_error/')
+    AND page_title NOT LIKE '%index%'
+    AND page_title NOT LIKE '%Search%'
+    GROUP BY language, page_title
+    ORDER BY avg_hits DESC
+    LIMIT 10;
+
+## Rubix Stats
+
+The cache statistics are pushed to MBean named rubix:name=stats. To check the stats, execute
+
+    SELECT Node, CachedReads, 
+    ROUND(extrareadfromremote,2) as ExtraReadFromRemote, 
+    ROUND(hitrate,2) as HitRate, 
+    ROUND(missrate,2) as MissRate,  
+    ROUND(nonlocaldataread,2) as NonLocalDataRead, 
+    NonLocalReads,
+    ROUND(readfromcache,2) as ReadFromCache, 
+    ROUND(readfromremote, 2) as ReadFromRemote, 
+    RemoteReads
+    FROM jmx.current."rubix:name=stats";
+
