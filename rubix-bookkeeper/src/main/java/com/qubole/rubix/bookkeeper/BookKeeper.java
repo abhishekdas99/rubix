@@ -82,11 +82,14 @@ public class BookKeeper
     private List<String> nodes;
     int currentNodeIndex = -1;
     static long splitSize;
+    private RemoteFetchProcessor fetchProcessor;
 
     public BookKeeper(Configuration conf)
     {
         this.conf = conf;
         initializeCache(conf);
+        fetchProcessor = new RemoteFetchProcessor(this, conf);
+        fetchProcessor.startAsync();
     }
 
     @Override
@@ -94,6 +97,8 @@ public class BookKeeper
             throws TException
     {
         initializeClusterManager(clusterType);
+        log.info("Getting Cache Status for RemotePath : " + remotePath + " StartBlock : " +
+            startBlock + " EndBlock : " + endBlock);
         if (nodeName == null) {
             log.error("Node name is null for Cluster Type" + ClusterType.findByValue(clusterType));
             return null;
@@ -133,6 +138,7 @@ public class BookKeeper
             throw new TException(e);
         }
         endBlock = setCorrectEndBlock(endBlock, fileLength, remotePath);
+        log.info(" Start Block : " + startBlock + " End Block : " + endBlock);
         List<BlockLocation> blockLocations = new ArrayList<>((int) (endBlock - startBlock));
         int blockSize = CacheConfig.getBlockSize(conf);
 
@@ -163,6 +169,7 @@ public class BookKeeper
         catch (IOException e) {
             throw new TException(e);
         }
+        log.info("BlockLocations for Path : " + remotePath + " StartBlock : " + startBlock + " are " + blockLocations);
 
         return blockLocations;
     }
@@ -243,6 +250,7 @@ public class BookKeeper
             invalidate(remotePath);
             return;
         }
+        log.info("Updating cache for " + remotePath + " StarBlock : " + startBlock + " EndBlock : " + endBlock);
         endBlock = setCorrectEndBlock(endBlock, fileLength, remotePath);
 
         try {
@@ -276,6 +284,11 @@ public class BookKeeper
     public boolean readData(String remotePath, long offset, int length, long fileSize, long lastModified, int clusterType)
             throws TException
     {
+        if (CacheConfig.isParallelWarmupEnabled(conf)) {
+          log.info("Adding to the queue Path : " + remotePath + " Offste : " + offset + " Length " + length);
+          fetchProcessor.addToProcessQueue(remotePath, offset, length, fileSize, lastModified);
+          return true;
+        }
         int blockSize = CacheConfig.getBlockSize(conf);
         byte[] buffer = new byte[blockSize];
         ByteBuffer byteBuffer = null;
@@ -291,7 +304,7 @@ public class BookKeeper
 
             for (long blockNum = startBlock; blockNum < endBlock; blockNum++, idx++) {
                 long readStart = blockNum * blockSize;
-                log.debug(" blockLocation is: " + blockLocations.get(idx).getLocation() + " for path " + remotePath + " offset " + offset + " length " + length);
+                log.info(" blockLocation is: " + blockLocations.get(idx).getLocation() + " for path " + remotePath + " offset " + offset + " length " + length);
                 if (blockLocations.get(idx).getLocation() != Location.CACHED) {
                     if (byteBuffer == null) {
                         byteBuffer = ByteBuffer.allocateDirect(CacheConfig.getDiskReadBufferSizeDefault(conf));
@@ -338,7 +351,7 @@ public class BookKeeper
     {
         long lastBlock = (fileLength - 1) / CacheConfig.getBlockSize(conf);
         if (endBlock > (lastBlock + 1)) {
-            log.debug(String.format("Correct endBlock from %d to %d for path %s and length %d", endBlock, lastBlock + 1, remotePath, fileLength));
+            log.info(String.format("Correct endBlock from %d to %d for path %s and length %d", endBlock, lastBlock + 1, remotePath, fileLength));
             endBlock = lastBlock + 1;
         }
 

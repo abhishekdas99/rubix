@@ -230,7 +230,7 @@ public class CachingInputStream
             throws IOException, InterruptedException, ExecutionException
 
     {
-        log.debug(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
+        log.info(String.format("Got Read, currentPos: %d currentBlock: %d bufferOffset: %d length: %d", nextReadPosition, nextReadBlock, offset, length));
 
         if (nextReadPosition >= fileSize) {
             log.debug("Already at eof, returning");
@@ -239,6 +239,7 @@ public class CachingInputStream
 
         // Get the last block
         final long endBlock = ((nextReadPosition + (length - 1)) / blockSize) + 1; // this block will not be read
+        log.debug("End block : " + endBlock);
 
         // Create read requests
         final List<ReadRequestChain> readRequestChains = setupReadRequestChains(buffer,
@@ -246,22 +247,28 @@ public class CachingInputStream
                 endBlock,
                 length);
 
-        log.debug("Executing Chains");
+        log.info("Executing Chains");
 
         // start read requests
         ImmutableList.Builder builder = ImmutableList.builder();
         int sizeRead = 0;
 
         for (ReadRequestChain readRequestChain : readRequestChains) {
+            log.info("Submitting Request for " + readRequestChain.toString());
             readRequestChain.lock();
             builder.add(readService.submit(readRequestChain));
         }
 
+        log.info("Submitted");
+
         List<ListenableFuture<Integer>> futures = builder.build();
+        log.info("Length of Futures : " + futures.size());
         for (ListenableFuture<Integer> future : futures) {
             // exceptions handled in caller
             try {
-                sizeRead += future.get();
+                int read = future.get();
+                log.info("Finally Read " + read + " from " + readRequestChains.get(futures.indexOf(future)).toString());
+                sizeRead += read;
             }
             catch (ExecutionException | InterruptedException e) {
                 for (ReadRequestChain readRequestChain : readRequestChains) {
@@ -281,6 +288,7 @@ public class CachingInputStream
             {
                 ReadRequestChainStats stats = new ReadRequestChainStats();
                 for (ReadRequestChain readRequestChain : readRequestChains) {
+                    log.info("Updating cache status for : " + readRequestChain.toString());
                     readRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
                     stats = stats.add(readRequestChain.getStats());
                 }
@@ -288,7 +296,7 @@ public class CachingInputStream
             }
         });
 
-        log.debug(String.format("Read %d bytes", sizeRead));
+        log.info(String.format("Read %d bytes", sizeRead));
         if (sizeRead > 0) {
             nextReadPosition += sizeRead;
             setNextReadBlock();
@@ -305,7 +313,9 @@ public class CachingInputStream
         DirectReadRequestChain directReadRequestChain = null;
         RemoteReadRequestChain remoteReadRequestChain = null;
         CachedReadRequestChain cachedReadRequestChain = null;
+        RemoteFetchRequestChain remoteFetchRequestChain = null;
         Map<String, NonLocalReadRequestChain> nonLocalRequests = new HashMap<>();
+        Map<String, NonLocalRequestChain> nonLocalAsyncRequests = new HashMap<String, NonLocalRequestChain>();
         ImmutableList.Builder chainedReadRequestChainBuilder = ImmutableList.builder();
 
         int lengthAlreadyConsidered = 0;
@@ -362,7 +372,7 @@ public class CachingInputStream
             }
 
             else if (isCached.get(idx).getLocation() == Location.CACHED) {
-                log.debug(String.format("Sending cached block %d to cachedReadRequestChain", blockNum));
+                log.info(String.format("Sending cached block %d to cachedReadRequestChain", blockNum));
                 try {
                     if (directReadBuffer == null) {
                         directReadBuffer = bufferPool.getBuffer(diskReadBufferSize);
@@ -384,37 +394,75 @@ public class CachingInputStream
             else {
                 if (isCached.get(idx).getLocation() == Location.NON_LOCAL) {
                     String remoteLocation = isCached.get(idx).getRemoteLocation();
-                    log.debug(String.format("Sending block %d to NonLocalReadRequestChain to node : %s", blockNum, remoteLocation));
-                    if (!nonLocalRequests.containsKey(remoteLocation)) {
-                        NonLocalReadRequestChain nonLocalReadRequestChain =
-                            new NonLocalReadRequestChain(remoteLocation, fileSize, lastModified, conf,
-                                remoteFileSystem, remotePath, clusterType.ordinal(), strictMode, statistics);
-                        nonLocalRequests.put(remoteLocation, nonLocalReadRequestChain);
+
+                    if (CacheConfig.isParallelWarmupEnabled(conf)) {
+                        log.info(String.format("Sending block %d to NonLocalRequestChain to node : %s", blockNum, remoteLocation));
+                        if (!nonLocalAsyncRequests.containsKey(remoteLocation)) {
+                            NonLocalRequestChain nonLocalRequestChain =
+                                new NonLocalRequestChain(remoteLocation, fileSize, lastModified,
+                                  conf, remoteFileSystem, remotePath, clusterType.ordinal(), strictMode,
+                                  statistics, nextReadBlock, endBlock);
+                            nonLocalAsyncRequests.put(remoteLocation, nonLocalRequestChain);
+                        }
+                        nonLocalAsyncRequests.get(remoteLocation).addReadRequest(readRequest);
+                        if (!nonLocalAsyncRequests.get(remoteLocation).getDirectReadRequestQueue().isEmpty()) {
+                            if (directReadRequestChain == null) {
+                                nonLocalAsyncRequests.get(remoteLocation).getDirectReadRequestQueue().remove();
+                                directReadRequestChain = new DirectReadRequestChain(getParentDataInputStream());
+                            }
+                            directReadRequestChain.addReadRequest(readRequest);
+                        }
                     }
-                    nonLocalRequests.get(remoteLocation).addReadRequest(readRequest);
+                    else {
+                        log.info(String.format("Sending block %d to NonLocalReadRequestChain to node : %s", blockNum, remoteLocation));
+                        if (!nonLocalRequests.containsKey(remoteLocation)) {
+                            NonLocalReadRequestChain nonLocalReadRequestChain =
+                                    new NonLocalReadRequestChain(remoteLocation, fileSize, lastModified, conf,
+                                    remoteFileSystem, remotePath, clusterType.ordinal(), strictMode, statistics);
+                            nonLocalRequests.put(remoteLocation, nonLocalReadRequestChain);
+                        }
+                        nonLocalRequests.get(remoteLocation).addReadRequest(readRequest);
+                    }
                 }
                 else {
-                    log.debug(String.format("Sending block %d to remoteReadRequestChain", blockNum));
-                    try {
-                        if (directWriteBuffer == null) {
-                            directWriteBuffer = bufferPool.getBuffer(diskReadBufferSize);
-                        }
-                        if (affixBuffer == null) {
-                            affixBuffer = new byte[blockSize];
-                        }
-                        if (remoteReadRequestChain == null) {
-                            remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), localPath, directWriteBuffer, affixBuffer);
-                        }
+                    if (directWriteBuffer == null) {
+                        directWriteBuffer = bufferPool.getBuffer(diskReadBufferSize);
                     }
-                    catch (IOException e) {
-                        log.error("Unable to obtain open file channel in RW mode", e);
-                        // reset bookkeeper client so that we take direct route
-                        this.bookKeeperClient = null;
-                        isCached = null;
-                        idx--;
-                        blockNum--;
+                    if (CacheConfig.isParallelWarmupEnabled(conf)) {
+                        log.info(String.format("Sending block %d to remoteFetchRequestChain", blockNum));
+                        if (directReadRequestChain == null) {
+                            directReadRequestChain = new DirectReadRequestChain(getParentDataInputStream());
+                        }
+
+                        if (remoteFetchRequestChain == null) {
+                            remoteFetchRequestChain = new RemoteFetchRequestChain(remotePath, remoteFileSystem,
+                                    "localhost", conf, lastModified, fileSize, clusterType.ordinal());
+                        }
+
+                        directReadRequestChain.addReadRequest(readRequest);
+                        remoteFetchRequestChain.addReadRequest(readRequest.clone());
+
                     }
-                    remoteReadRequestChain.addReadRequest(readRequest);
+                    else {
+                        log.info(String.format("Sending block %d to remoteReadRequestChain", blockNum));
+                        try {
+                            if (affixBuffer == null) {
+                                affixBuffer = new byte[blockSize];
+                            }
+                            if (remoteReadRequestChain == null) {
+                                remoteReadRequestChain = new RemoteReadRequestChain(getParentDataInputStream(), localPath, directWriteBuffer, affixBuffer);
+                            }
+                        }
+                        catch (IOException e) {
+                            log.error("Unable to obtain open file channel in RW mode", e);
+                            // reset bookkeeper client so that we take direct route
+                            this.bookKeeperClient = null;
+                            isCached = null;
+                            idx--;
+                            blockNum--;
+                        }
+                        remoteReadRequestChain.addReadRequest(readRequest);
+                    }
                 }
             }
         }
@@ -423,24 +471,46 @@ public class CachingInputStream
             chainedReadRequestChainBuilder.add(cachedReadRequestChain);
         }
 
-        if (directReadRequestChain != null ||
+        if (!CacheConfig.isParallelWarmupEnabled(conf)) {
+            if (directReadRequestChain != null ||
                 remoteReadRequestChain != null) {
-            ChainedReadRequestChain shared = new ChainedReadRequestChain();
-            if (remoteReadRequestChain != null) {
-                shared.addReadRequestChain(remoteReadRequestChain);
+                ChainedReadRequestChain shared = new ChainedReadRequestChain();
+                if (remoteReadRequestChain != null) {
+                    shared.addReadRequestChain(remoteReadRequestChain);
+                }
+                if (directReadRequestChain != null) {
+                    shared.addReadRequestChain(directReadRequestChain);
+                }
+                chainedReadRequestChainBuilder.add(shared);
             }
-
+        }
+        else {
             if (directReadRequestChain != null) {
-                shared.addReadRequestChain(directReadRequestChain);
+                if (directReadRequestChain != null) {
+                    chainedReadRequestChainBuilder.add(directReadRequestChain);
+                }
+
+                if (remoteFetchRequestChain != null) {
+                    chainedReadRequestChainBuilder.add(remoteFetchRequestChain);
+                }
             }
-            chainedReadRequestChainBuilder.add(shared);
         }
 
-        if (!nonLocalRequests.isEmpty()) {
-            for (NonLocalReadRequestChain nonLocalReadRequestChain1 : nonLocalRequests.values()) {
-                chainedReadRequestChainBuilder.add(nonLocalReadRequestChain1);
+        if (!CacheConfig.isParallelWarmupEnabled(conf)) {
+            if (!nonLocalRequests.isEmpty()) {
+                for (NonLocalReadRequestChain nonLocalReadRequestChain1 : nonLocalRequests.values()) {
+                    chainedReadRequestChainBuilder.add(nonLocalReadRequestChain1);
+                }
             }
         }
+        else {
+            if (!nonLocalAsyncRequests.isEmpty()) {
+                for (NonLocalRequestChain item : nonLocalAsyncRequests.values()) {
+                    chainedReadRequestChainBuilder.add(item);
+                }
+            }
+        }
+
         return chainedReadRequestChainBuilder.build();
     }
 

@@ -92,6 +92,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
             }
             SocketChannel dataTransferClient;
             try {
+                //TODO create the client only once
                 dataTransferClient = DataTransferClientHelper.createDataTransferClient(remoteNodeName, conf);
             }
             catch (Exception e) {
@@ -103,6 +104,7 @@ public class NonLocalReadRequestChain extends ReadRequestChain
                     return directReadRequest(readRequests.indexOf(readRequest));
                 }
             }
+            log.info("Executing NonLocalReadRequestChain for ReadRequest : " + readRequest.toString());
             try {
                 int nread = 0;
 
@@ -163,6 +165,8 @@ public class NonLocalReadRequestChain extends ReadRequestChain
                 }
             }
         }
+
+        log.info("Read " + totalRead + " from " + remoteNodeName + " for file " + filePath);
 
         return totalRead;
     }

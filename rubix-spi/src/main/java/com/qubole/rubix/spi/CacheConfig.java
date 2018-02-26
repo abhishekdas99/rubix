@@ -69,9 +69,17 @@ public class CacheConfig
     private static String diskReadBufferSizeConf = "hadoop.cache.data.disk.read.buffer.size";
     public static String socketReadTimeOutConf = "hadoop.cache.network.socket.read.timeout";
     private static String diskMonitorIntervalConf = "hadoop.cache.disk.monitor.interval";
+
     private static String meticsClassConf = "hadoop.cache.data.metrics.class";
     private static String metricsRepotersConf = "hadoop.cache.data.metrics.reporters";
+
+    private static String parallelWarmupEnable = "hadoop.cache.data.parallel.warmup";
+    private static String processThreadInitalDelay = "hadoop.cache.data.request.process.inital.delay";
+    private static String processThreadInterval = "hadoop.cache.data.request.process.interval";
+    private static String remoteFetchProcessInterval = "hadoop.cache.data.remotefetch.interval";
+    private static String numRemoteFetchThreads = "hadoop.cache.data.remotefetch.threads";
     static String fileCacheDirSuffixConf = "/fcache/";
+
     static int maxDisksConf = 5;
 
     // default values
@@ -400,5 +408,29 @@ public class CacheConfig
     public static String getMetricsReporters(Configuration conf)
     {
         return conf.get(metricsRepotersConf, metricsReporterDefault);
+    }
+    public static boolean isParallelWarmupEnabled(Configuration conf)
+    {
+        return conf.getBoolean(parallelWarmupEnable, true);
+    }
+
+    public static int getProcessThreadInitialDelayInMs(Configuration conf)
+    {
+        return conf.getInt(processThreadInitalDelay, 1000);
+    }
+
+    public static int getProcessThreadIntervalInMs(Configuration conf)
+    {
+        return conf.getInt(processThreadInterval, 1000);
+    }
+
+    public static int getRemoteFetchProcessIntervalInMS(Configuration conf)
+    {
+        return conf.getInt(remoteFetchProcessInterval, 10000);
+    }
+
+    public static int getRemoteFetchNumThreads(Configuration conf)
+    {
+        return conf.getInt(numRemoteFetchThreads, 10);
     }
 }
