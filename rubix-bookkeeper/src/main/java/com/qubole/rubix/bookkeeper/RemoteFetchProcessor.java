@@ -98,6 +98,8 @@ public class RemoteFetchProcessor extends AbstractScheduledService
   {
     long currentTime = System.currentTimeMillis();
 
+    // Till the queue is not empty or there are no more requests which came in before the configured delay time
+    // we are going to collect the requests and process them
     while (!processQueue.isEmpty()) {
       FetchRequest request = processQueue.peek();
       if (currentTime - request.getRequestedTime() < this.requestProcessDelay) {
@@ -117,6 +119,7 @@ public class RemoteFetchProcessor extends AbstractScheduledService
 
     processRemoteFetchRequest();
 
+    // After every iteration we are clearing the maps
     rangeMap.clear();
     fetchRequestMap.clear();
   }
@@ -146,21 +149,25 @@ public class RemoteFetchProcessor extends AbstractScheduledService
           directWriteBuffer, conf, fileRequestMetadata.remotePath, fileRequestMetadata.fileSize,
           fileRequestMetadata.lastModified);
 
-      synchronized (entry.getKey()) {
-        for (Range<Long> range : entry.getValue().asRanges()) {
-          log.info("Adding request for File : " + entry.getKey() + " Start : "
-              + range.upperEndpoint() + " End : " + range.lowerEndpoint());
-          ReadRequest request = new ReadRequest(range.lowerEndpoint(), range.upperEndpoint(),
-              range.lowerEndpoint(), range.upperEndpoint(), null, 0, fetchRequestMap.get(entry.getKey()).fileSize);
-          requestChain.addReadRequest(request);
-        }
-        it.remove();
+      for (Range<Long> range : entry.getValue().asRanges()) {
+        log.info("Adding request for File : " + entry.getKey() + " Start : "
+            + range.lowerEndpoint() + " End : " + range.upperEndpoint());
+        ReadRequest request = new ReadRequest(range.lowerEndpoint(), range.upperEndpoint(),
+            range.lowerEndpoint(), range.upperEndpoint(), null, 0, fetchRequestMap.get(entry.getKey()).fileSize);
+        requestChain.addReadRequest(request);
       }
+      it.remove();
+
       log.info("Request added for file: " + requestChain.getRemotePath() + " Number of Requests : " +
               requestChain.getReadRequests().size());
       readRequestChainList.add(requestChain);
     }
 
+    processDownloadRequests(readRequestChainList);
+  }
+
+  private void processDownloadRequests(List<FileDownloadRequestChain> readRequestChainList)
+  {
     int sizeRead = 0;
     List<Future<Integer>> futures = new ArrayList<Future<Integer>>();
 
