@@ -17,7 +17,9 @@ import com.google.common.collect.RangeSet;
 import com.google.common.collect.TreeRangeSet;
 import com.google.common.util.concurrent.AbstractScheduledService;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.qubole.rubix.common.MetricsConstant;
 import com.qubole.rubix.common.MetricsFactory;
+import com.qubole.rubix.common.MetricsVariable;
 import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.core.FileDownloadRequestChain;
 import com.qubole.rubix.spi.CacheConfig;
@@ -84,6 +86,24 @@ public class RemoteFetchProcessor extends AbstractScheduledService
 
     ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(numThreads);
     processService = MoreExecutors.getExitingExecutorService(executor);
+    registerQueueSizeMetrics();
+  }
+
+  private void registerQueueSizeMetrics()
+  {
+    try {
+      MetricsVariable<Integer> queueSize = new MetricsVariable<Integer>() {
+        @Override
+        public Integer getValue()
+        {
+          return processQueue.size();
+        }
+      };
+      MetricsFactory.getInstance().addGauge("process_queue_size", queueSize);
+    }
+    catch (Exception ex) {
+      log.error("Exception in registering Queue Size Metrics. ", ex);
+    }
   }
 
   public void addToProcessQueue(String remotePath, long offset, int length, long fileSize, long lastModified)
@@ -190,7 +210,7 @@ public class RemoteFetchProcessor extends AbstractScheduledService
         requestChain.cancel();
       }
     }
-    MetricsFactory.getInstance().incrementCounter("remote_read_requests", sizeRead);
+    MetricsFactory.getInstance().incrementCounter(MetricsConstant.REMOTE_READ_BYTES, sizeRead);
   }
 
   private class FileMetadataRequest

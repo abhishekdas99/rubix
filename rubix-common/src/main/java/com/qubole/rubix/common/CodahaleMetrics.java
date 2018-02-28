@@ -22,7 +22,7 @@ import com.codahale.metrics.MetricSet;
 import com.codahale.metrics.jvm.GarbageCollectorMetricSet;
 import com.codahale.metrics.jvm.MemoryUsageGaugeSet;
 import com.codahale.metrics.jvm.ThreadStatesGaugeSet;
-import com.codahale.metrics.jvm.BufferPoolMetricSet;
+//import com.codahale.metrics.jvm.BufferPoolMetricSet;
 
 import com.google.common.base.Splitter;
 import com.google.common.cache.CacheBuilder;
@@ -35,7 +35,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 
 import java.io.Closeable;
-import java.lang.management.ManagementFactory;
+//import java.lang.management.ManagementFactory;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
@@ -84,7 +84,7 @@ public class CodahaleMetrics implements Metrics
     registerAll("rubix.bookkeeper.gc", new GarbageCollectorMetricSet());
     registerAll("rubix.bookkeeper.memory", new MemoryUsageGaugeSet());
     registerAll("rubix.bookkeeper.threads", new ThreadStatesGaugeSet());
-    registerAll("rubix.bookkeeper.buffers", new BufferPoolMetricSet(ManagementFactory.getPlatformMBeanServer()));
+    //registerAll("rubix.bookkeeper.buffers", new BufferPoolMetricSet(ManagementFactory.getPlatformMBeanServer()));
 
     //Metrics reporter
     Set<MetricsReporting> finalReporterList = new HashSet<MetricsReporting>();

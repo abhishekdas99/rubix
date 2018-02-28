@@ -419,7 +419,7 @@ public class BookKeeper
           metrics.addGauge(MetricsConstant.CACHE_DISK_SPACE_USED, diskSpaceUsed);
         }
         catch (Exception ex) {
-          log.error("Exception in registering ", ex);
+          log.error("Exception in registering DiskSpaceUsed Metrics. ", ex);
         }
     }
 
