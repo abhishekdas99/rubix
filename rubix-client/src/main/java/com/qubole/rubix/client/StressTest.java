@@ -119,8 +119,52 @@ public class StressTest extends Configured implements Tool
   {
     int res = stressTestDownloadData(client);
     log.info("Got Success in DownloadData " + res + " out of " + numThreads);
+    res = stressTestDownloadDataForSameFile(client);
     res = stressTestGetCacheStatus(client);
     log.info("Got Success in GetCacheStatus " + res + " out of " + numThreads);
+  }
+
+  private int stressTestDownloadDataForSameFile(final RubixClient client)
+  {
+    String expectedOutput = StressTestUtils.generateContent().substring(0, 200);
+    final String remoteFile = remotePathForFile + remoteFileName + (numThreads + 1);
+    final Path remotePath = new Path("file:///" + remoteFile);
+    List<Future<Boolean>> futures = new ArrayList<Future<Boolean>>();
+
+    for (int i = 0; i < numThreads; i++) {
+      Future<Boolean> future = processService.submit(
+          new Callable<Boolean>()
+          {
+            @Override
+            public Boolean call() throws Exception
+            {
+              return client.downloadData(remotePath.toString(), 0, 200, 10000, 10000, 3);
+            }
+          }
+      );
+      futures.add(future);
+    }
+
+    int i = 0;
+    int success = 0;
+
+    for (Future<Boolean> future : futures) {
+      try {
+        boolean res = future.get();
+        if (res == true) {
+          if (validateContent(remotePath.toString(), 0, 200, expectedOutput)) {
+            success++;
+          }
+        }
+      }
+      catch (ExecutionException | InterruptedException ex) {
+        log.error("Problem in getting result. Exception : " + ex.toString(), ex);
+      }
+      i++;
+    }
+
+    return success;
+
   }
 
   private int stressTestDownloadData(final RubixClient client)
