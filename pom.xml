@@ -61,6 +61,7 @@
         <module>rubix-tests</module>
         <module>assembly</module>
         <module>rubix-rpm</module>
+        <module>rubix-client</module>
     </modules>
 
     <dependencyManagement>
