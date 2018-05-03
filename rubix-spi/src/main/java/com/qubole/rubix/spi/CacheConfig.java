@@ -225,7 +225,7 @@ public class CacheConfig
   public static String getDirectory(String remotePath, Configuration conf)
   {
     String parentPath = getParent(remotePath);
-    String relLocation = parentPath.indexOf(':') == -1 ? parentPath : parentPath.substring(parentPath.indexOf(':') + 3);
+    String relLocation = parentPath.indexOf(':') == -1 ? parentPath : Path.getPathWithoutSchemeAndAuthority(new Path(remotePath)).toString();
     String absLocation = getLocalDirFor(remotePath, conf) + relLocation;
     File parent = new File(absLocation);
     parent.mkdirs();
