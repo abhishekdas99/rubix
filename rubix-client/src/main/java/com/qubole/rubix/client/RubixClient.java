@@ -28,8 +28,8 @@ import java.util.List;
  */
 public class RubixClient
 {
-  private BookKeeperFactory factory = null;
-  private Configuration conf = null;
+  private BookKeeperFactory factory;
+  private Configuration conf;
 
   private static final Log log = LogFactory.getLog(RubixClient.class);
 

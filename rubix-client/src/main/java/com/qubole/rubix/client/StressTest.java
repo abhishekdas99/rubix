@@ -16,6 +16,7 @@ package com.qubole.rubix.client;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.qubole.rubix.spi.BlockLocation;
 import com.qubole.rubix.spi.CacheConfig;
+import com.qubole.rubix.spi.CacheUtil;
 import com.qubole.rubix.spi.Location;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -84,7 +85,7 @@ public class StressTest extends Configured implements Tool
 
       ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(numThreads);
       processService = MoreExecutors.getExitingExecutorService(executor);
-      conf.setInt(CacheConfig.blockSizeConf, blockSize);
+      CacheConfig.setBlockSize(conf, blockSize);
 
       try {
         Files.createDirectories(Paths.get(remotePathForFile));
@@ -98,7 +99,7 @@ public class StressTest extends Configured implements Tool
       performStressTests(client);
     }
     finally {
-      HashMap<Integer, String> dirs = CacheConfig.getDiskPathsMap(conf);
+      HashMap<Integer, String> dirs = CacheUtil.getCacheDiskPathsMap(conf);
       for (String dir : dirs.values()) {
         Files.walkFileTree(Paths.get(dir + "/fcache"), new DeleteFileVisitor());
       }
@@ -140,8 +141,7 @@ public class StressTest extends Configured implements Tool
             {
               return client.downloadData(remotePath.toString(), 0, 200, 10000, 10000, 3);
             }
-          }
-      );
+          });
       futures.add(future);
     }
 
@@ -164,7 +164,6 @@ public class StressTest extends Configured implements Tool
     }
 
     return success;
-
   }
 
   private int stressTestDownloadData(final RubixClient client)
@@ -182,8 +181,7 @@ public class StressTest extends Configured implements Tool
             {
               return client.downloadData(remotePath.toString(), 0, 200, 10000, 10000, 3);
             }
-          }
-      );
+          });
       futures.add(future);
     }
 
@@ -212,7 +210,7 @@ public class StressTest extends Configured implements Tool
 
   private boolean validateContent(String remotePath, int offset, int length, String expectedData)
   {
-    String localFilePath = CacheConfig.getLocalPath(remotePath, conf);
+    String localFilePath = CacheUtil.getLocalPath(remotePath, conf);
     String result = "";
     try {
       byte[] cachedData = StressTestUtils.readBytesFromFile(localFilePath, offset, length);
@@ -239,8 +237,7 @@ public class StressTest extends Configured implements Tool
             {
               return client.getCacheStatus(remotePath.toString(), 10000, 10000, 0, 1, 3);
             }
-          }
-      );
+          });
       futures.add(future);
     }
 
