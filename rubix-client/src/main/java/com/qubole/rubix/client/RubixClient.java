@@ -21,7 +21,9 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Created by Abhishek on 3/16/18.
@@ -90,5 +92,31 @@ public class RubixClient
     }
 
     return dataDownloaded;
+  }
+
+  public Map<String, Double> getCacheStats()
+  {
+    RetryingBookkeeperClient client = null;
+    Map<String, Double> statsMap = new HashMap<String, Double>();
+
+    try {
+      client = factory.createBookKeeperClient(conf);
+      statsMap = client.getCacheStats();
+    }
+    catch (Exception ex) {
+      log.error("Error while invoking getCacheStats " + ex.toString(), ex);
+    }
+    finally {
+      try {
+        if (client != null) {
+          client.close();
+        }
+      }
+      catch (Exception ex) {
+        log.error("Not able to close BookKeeper client");
+      }
+    }
+
+    return statsMap;
   }
 }
