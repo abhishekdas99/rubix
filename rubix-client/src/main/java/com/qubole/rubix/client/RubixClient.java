@@ -19,6 +19,8 @@ import com.qubole.rubix.spi.RetryingBookkeeperClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.thrift.shaded.TException;
+import org.apache.thrift.shaded.transport.TTransportException;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,29 +43,58 @@ public class RubixClient
     factory = new BookKeeperFactory();
   }
 
-  public List<BlockLocation> getCacheStatus(String remotePath, long fileLength, long lastModified, long startBlock,
-                                            long endBlock, int clusterType)
+  public List<BlockLocation> getLocalCacheStatus(String remotePath, long fileLength, long lastModified, long startBlock,
+                                                 long endBlock, int clusterType)
   {
     RetryingBookkeeperClient client = null;
     List<BlockLocation> result = new ArrayList<BlockLocation>();
+
     try {
       client = factory.createBookKeeperClient(conf);
-      result = client.getCacheStatus(remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
+      result = getCacheStatus(client, remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
     }
-    catch (Exception ex) {
+    catch (TTransportException ex) {
+      log.error("Error while creating bookkeeper cleint");
+    }
+    catch (TException ex) {
       log.error("Error while invoking getCacheStatus");
     }
     finally {
-      try {
-        if (client != null) {
-          client.close();
-        }
-      }
-      catch (Exception ex) {
-        log.error("Not able to close BookKeeper client");
-      }
+      closeClient(client);
     }
 
+    return result;
+  }
+
+  public List<BlockLocation> getRemoteCacheStatus(String remotePath, long fileLength, long lastModified, long startBlock,
+                                                  long endBlock, int clusterType, String host)
+  {
+    RetryingBookkeeperClient client = null;
+    List<BlockLocation> result = new ArrayList<BlockLocation>();
+
+    try {
+      client = factory.createBookKeeperClient(host, conf);
+      result = getCacheStatus(client, remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
+    }
+    catch (TTransportException ex) {
+      log.error("Error while creating bookkeeper cleint");
+    }
+    catch (TException ex) {
+      log.error("Error while invoking getCacheStatus");
+    }
+    finally {
+      closeClient(client);
+    }
+
+    return result;
+  }
+
+  private List<BlockLocation> getCacheStatus(RetryingBookkeeperClient client, String remotePath, long fileLength,
+                                             long lastModified, long startBlock, long endBlock,
+                                             int clusterType) throws TException
+  {
+    List<BlockLocation> result = new ArrayList<BlockLocation>();
+    result = client.getCacheStatus(remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
     return result;
   }
 
@@ -81,14 +112,7 @@ public class RubixClient
       log.error("Error while invoking readData " + ex.toString(), ex);
     }
     finally {
-      try {
-        if (client != null) {
-          client.close();
-        }
-      }
-      catch (Exception ex) {
-        log.error("Not able to close BookKeeper client");
-      }
+      closeClient(client);
     }
 
     return dataDownloaded;
@@ -107,16 +131,21 @@ public class RubixClient
       log.error("Error while invoking getCacheStats " + ex.toString(), ex);
     }
     finally {
-      try {
-        if (client != null) {
-          client.close();
-        }
-      }
-      catch (Exception ex) {
-        log.error("Not able to close BookKeeper client");
-      }
+      closeClient(client);
     }
 
     return statsMap;
+  }
+
+  private void closeClient(RetryingBookkeeperClient client)
+  {
+    try {
+      if (client != null) {
+        client.close();
+      }
+    }
+    catch (Exception ex) {
+      log.error("Not able to close BookKeeper client");
+    }
   }
 }

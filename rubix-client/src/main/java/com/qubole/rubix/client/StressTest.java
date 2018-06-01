@@ -235,7 +235,7 @@ public class StressTest extends Configured implements Tool
             @Override
             public List<BlockLocation> call() throws Exception
             {
-              return client.getCacheStatus(remotePath.toString(), 10000, 10000, 0, 1, 3);
+              return client.getLocalCacheStatus(remotePath.toString(), 10000, 10000, 0, 1, 3);
             }
           });
       futures.add(future);
