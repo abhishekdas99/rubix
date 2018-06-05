@@ -46,35 +46,31 @@ public class RubixClient
   public List<BlockLocation> getLocalCacheStatus(String remotePath, long fileLength, long lastModified, long startBlock,
                                                  long endBlock, int clusterType)
   {
-    RetryingBookkeeperClient client = null;
-    List<BlockLocation> result = new ArrayList<BlockLocation>();
-
-    try {
-      client = factory.createBookKeeperClient(conf);
-      result = getCacheStatus(client, remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
-    }
-    catch (TTransportException ex) {
-      log.error("Error while creating bookkeeper cleint");
-    }
-    catch (TException ex) {
-      log.error("Error while invoking getCacheStatus");
-    }
-    finally {
-      closeClient(client);
-    }
-
-    return result;
+    return getCacheStatusInternal(null, remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
   }
 
   public List<BlockLocation> getRemoteCacheStatus(String remotePath, long fileLength, long lastModified, long startBlock,
                                                   long endBlock, int clusterType, String host)
   {
+    return getCacheStatusInternal(host, remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
+  }
+
+  private List<BlockLocation> getCacheStatusInternal(String host, String remotePath, long fileLength,
+                                                     long lastModified, long startBlock, long endBlock,
+                                                     int clusterType)
+  {
     RetryingBookkeeperClient client = null;
     List<BlockLocation> result = new ArrayList<BlockLocation>();
 
     try {
-      client = factory.createBookKeeperClient(host, conf);
-      result = getCacheStatus(client, remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
+      if (host != null) {
+        client = factory.createBookKeeperClient(host, conf);
+      }
+      else {
+        client = factory.createBookKeeperClient(conf);
+      }
+
+      result = client.getCacheStatus(remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
     }
     catch (TTransportException ex) {
       log.error("Error while creating bookkeeper cleint");
@@ -89,26 +85,39 @@ public class RubixClient
     return result;
   }
 
-  private List<BlockLocation> getCacheStatus(RetryingBookkeeperClient client, String remotePath, long fileLength,
-                                             long lastModified, long startBlock, long endBlock,
-                                             int clusterType) throws TException
+  public boolean downloadDataInLocal(String remotePath, long offset, int length, long fileSize, long lastModified,
+                                     int clusterType)
   {
-    List<BlockLocation> result = new ArrayList<BlockLocation>();
-    result = client.getCacheStatus(remotePath, fileLength, lastModified, startBlock, endBlock, clusterType);
-    return result;
+    return downloadDataInternal(null, remotePath, offset, length, fileSize, lastModified, clusterType);
   }
 
-  public boolean downloadData(String remotePath, long offset, int length, long fileSize, long lastModified,
-                              int clusterType)
+  public boolean downloadDataInNonLocalNode(String remotePath, long offset, int length, long fileSize, long lastModified,
+                                            int clusterType, String host)
+  {
+    return downloadDataInternal(host, remotePath, offset, length, fileSize, lastModified, clusterType);
+  }
+
+  private boolean downloadDataInternal(String host, String remotePath, long offset, int length,
+                               long fileSize, long lastModified, int clusterType)
   {
     RetryingBookkeeperClient client = null;
     boolean dataDownloaded = false;
+
     try {
-      client = factory.createBookKeeperClient(conf);
+      if (host != null) {
+        client = factory.createBookKeeperClient(host, conf);
+      }
+      else {
+        client = factory.createBookKeeperClient(conf);
+      }
+
       log.info("Downloading data from path : " + remotePath);
       dataDownloaded = client.readData(remotePath, offset, length, fileSize, lastModified, clusterType);
     }
-    catch (Exception ex) {
+    catch (TTransportException ex) {
+      log.error("Error while creating bookkeeper cleint");
+    }
+    catch (TException ex) {
       log.error("Error while invoking readData " + ex.toString(), ex);
     }
     finally {

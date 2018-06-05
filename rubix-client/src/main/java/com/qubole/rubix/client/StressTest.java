@@ -139,7 +139,7 @@ public class StressTest extends Configured implements Tool
             @Override
             public Boolean call() throws Exception
             {
-              return client.downloadData(remotePath.toString(), 0, 200, 10000, 10000, 3);
+              return client.downloadDataInLocal(remotePath.toString(), 0, 200, 10000, 10000, 3);
             }
           });
       futures.add(future);
@@ -179,7 +179,7 @@ public class StressTest extends Configured implements Tool
             @Override
             public Boolean call() throws Exception
             {
-              return client.downloadData(remotePath.toString(), 0, 200, 10000, 10000, 3);
+              return client.downloadDataInLocal(remotePath.toString(), 0, 200, 10000, 10000, 3);
             }
           });
       futures.add(future);
