@@ -283,9 +283,7 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
             end = file.getLen();
           }
           String key = file.getPath().toString() + i + end;
-          HashFunction hf = Hashing.md5();
-          HashCode hc = hf.hashString(key, Charsets.UTF_8);
-          int nodeIndex = Hashing.consistentHash(hc, nodes.size());
+          int nodeIndex = getNodeIndex(nodes.size(), key);
           String[] name = new String[]{nodes.get(nodeIndex)};
           String[] host = new String[]{nodes.get(nodeIndex)};
           blockLocations[blockNumber++] = new BlockLocation(name, host, i, end - i);
@@ -298,5 +296,15 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     else {
       throw new IllegalArgumentException("Invalid start or len parameter");
     }
+  }
+
+  private int getNodeIndex(int numNodes, String key)
+  {
+    HashFunction hf = Hashing.md5();
+    HashCode hc = hf.hashString(key, Charsets.UTF_8);
+    int initialNodeIndex = Hashing.consistentHash(hc, numNodes);
+    int finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
+
+    return finalNodeIndex;
   }
 }

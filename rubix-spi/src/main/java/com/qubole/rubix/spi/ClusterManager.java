@@ -64,4 +64,6 @@ public abstract class ClusterManager
   // Nodes format as per the note above
   // Should return sorted list
   public abstract List<String> getNodes();
+
+  public abstract Integer getNextRunningNodeIndex(int startIndex);
 }

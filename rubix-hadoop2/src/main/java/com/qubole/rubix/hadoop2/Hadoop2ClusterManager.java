@@ -16,8 +16,7 @@ import com.google.common.base.Throwables;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Lists;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
@@ -35,10 +34,10 @@ import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Collections;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -52,7 +51,7 @@ public class Hadoop2ClusterManager extends ClusterManager
   private boolean isMaster = true;
   public int serverPort = 8088;
   private String serverAddress = "localhost";
-  static LoadingCache<String, List<String>> nodesCache;
+  static LoadingCache<String, Map<String, String>> nodesCache;
   YarnConfiguration yconf;
   String address = "localhost:8088";
   private Log log = LogFactory.getLog(Hadoop2ClusterManager.class);
@@ -70,16 +69,16 @@ public class Hadoop2ClusterManager extends ClusterManager
     ExecutorService executor = Executors.newSingleThreadExecutor();
     nodesCache = CacheBuilder.newBuilder()
         .refreshAfterWrite(getNodeRefreshTime(), TimeUnit.SECONDS)
-        .build(CacheLoader.asyncReloading(new CacheLoader<String, List<String>>()
+        .build(CacheLoader.asyncReloading(new CacheLoader<String, Map<String, String>>()
         {
           @Override
-          public List<String> load(String s)
+          public Map<String, String> load(String s)
               throws Exception
           {
             if (!isMaster) {
               // First time all nodes start assuming themselves as master and down the line figure out their role
               // Next time onwards, only master will be fetching the list of nodes
-              return ImmutableList.of();
+              return ImmutableMap.of();
             }
             try {
               StringBuffer response = new StringBuffer();
@@ -101,7 +100,7 @@ public class Hadoop2ClusterManager extends ClusterManager
                 log.info("/ws/v1/cluster/nodes failed due to " + responseCode + ". Setting this node as worker.");
                 isMaster = false;
                 httpcon.disconnect();
-                return ImmutableList.of();
+                return ImmutableMap.of();
               }
               Gson gson = new Gson();
               Type type = new TypeToken<NodesResponse>()
@@ -109,31 +108,39 @@ public class Hadoop2ClusterManager extends ClusterManager
               }.getType();
               NodesResponse nodesResponse = gson.fromJson(response.toString(), type);
               List<Node> allNodes = nodesResponse.getNodes().getNodeList();
-              Set<String> hosts = new HashSet<>();
+              Map<String, String> hosts = new LinkedHashMap<String, String>();
 
               if (allNodes.isEmpty()) {
                 // Empty result set => server up and only master node running, return localhost has the only node
                 // Do not need to consider failed nodes list as 1node cluster and server is up since it replied to allNodesRequest
-                return ImmutableList.of(InetAddress.getLocalHost().getHostAddress());
+                //return ImmutableList.of(InetAddress.getLocalHost().getHostAddress());
+                return ImmutableMap.of(InetAddress.getLocalHost().getHostAddress(), "RUNNING");
               }
 
               for (Node node : allNodes) {
                 String state = node.getState();
                 log.debug("Hostname: " + node.getNodeHostName() + "State: " + state);
                 //keep only healthy data nodes
+                /*
                 if (state.equalsIgnoreCase("Running") || state.equalsIgnoreCase("New") || state.equalsIgnoreCase("Rebooted")) {
                   hosts.add(node.getNodeHostName());
                 }
+                */
+                hosts.put(node.getNodeHostName(), node.getState());
               }
 
               if (hosts.isEmpty()) {
                 throw new Exception("No healthy data nodes found.");
               }
 
+              /*
               List<String> hostList = Lists.newArrayList(hosts.toArray(new String[0]));
               Collections.sort(hostList);
               log.debug("Hostlist: " + hostList.toString());
               return hostList;
+              */
+              log.debug("Hostlist: " + hosts.toString());
+              return hosts;
             }
             catch (Exception e) {
               throw Throwables.propagate(e);
@@ -161,7 +168,28 @@ public class Hadoop2ClusterManager extends ClusterManager
   public List<String> getNodes()
   {
     try {
-      return nodesCache.get("nodeList");
+      return new ArrayList<>(nodesCache.get("nodeList").keySet());
+    }
+    catch (ExecutionException e) {
+      e.printStackTrace();
+    }
+
+    return null;
+  }
+
+  @Override
+  public Integer getNextRunningNodeIndex(int startIndex)
+  {
+    try {
+      List<String> nodeList = new ArrayList<>(nodesCache.get("nodeList").keySet());
+      for (int i = startIndex; i < (startIndex + nodeList.size()); i++) {
+        int index = i % nodeList.size();
+        String nodeState = nodesCache.get("nodeList").get(nodeList.get(index));
+        if (nodeState.equalsIgnoreCase("Running") || nodeState.equalsIgnoreCase("New")
+            || nodeState.equalsIgnoreCase("Rebooted")) {
+          return index;
+        }
+      }
     }
     catch (ExecutionException e) {
       e.printStackTrace();

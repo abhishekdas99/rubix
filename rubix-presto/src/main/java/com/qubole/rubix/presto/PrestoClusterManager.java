@@ -238,6 +238,12 @@ public class PrestoClusterManager extends ClusterManager
   }
 
   @Override
+  public Integer getNextRunningNodeIndex(int startIndex)
+  {
+    return startIndex;
+  }
+
+  @Override
   public ClusterType getClusterType()
   {
     return ClusterType.PRESTO_CLUSTER_MANAGER;

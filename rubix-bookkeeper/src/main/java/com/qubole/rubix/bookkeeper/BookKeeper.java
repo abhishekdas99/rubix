@@ -132,9 +132,7 @@ public class BookKeeper implements com.qubole.rubix.spi.BookKeeperService.Iface
         end = fileLength;
       }
       String key = remotePath + i + end;
-      HashFunction hf = Hashing.md5();
-      HashCode hc = hf.hashString(key, Charsets.UTF_8);
-      int nodeIndex = Hashing.consistentHash(hc, nodes.size());
+      int nodeIndex = getNodeIndex(key);
       blockSplits.put(blockNumber, nodes.get(nodeIndex));
       blockNumber++;
     }
@@ -183,6 +181,16 @@ public class BookKeeper implements com.qubole.rubix.spi.BookKeeperService.Iface
     }
 
     return blockLocations;
+  }
+
+  private int getNodeIndex(String key)
+  {
+    HashFunction hf = Hashing.md5();
+    HashCode hc = hf.hashString(key, Charsets.UTF_8);
+    int initialNodeIndex = Hashing.consistentHash(hc, nodes.size());
+    int finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
+
+    return finalNodeIndex;
   }
 
   private void initializeClusterManager(int clusterType)

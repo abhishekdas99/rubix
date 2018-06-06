@@ -102,6 +102,12 @@ public class MockCachingFileSystem extends CachingFileSystem<RawLocalFileSystem>
     }
 
     @Override
+    public Integer getNextRunningNodeIndex(int startIndex)
+    {
+      return 0;
+    }
+
+    @Override
     public boolean isMaster()
     {
       return false;
