@@ -303,7 +303,13 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     HashFunction hf = Hashing.md5();
     HashCode hc = hf.hashString(key, Charsets.UTF_8);
     int initialNodeIndex = Hashing.consistentHash(hc, numNodes);
-    int finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
+    int finalNodeIndex = initialNodeIndex;
+    if (hc.asInt() % 2 == 0) {
+      finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
+    }
+    else {
+      finalNodeIndex = clusterManager.getPreviousRunningNodeIndex(initialNodeIndex);
+    }
 
     return finalNodeIndex;
   }

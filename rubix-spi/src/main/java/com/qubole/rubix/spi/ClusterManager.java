@@ -66,4 +66,6 @@ public abstract class ClusterManager
   public abstract List<String> getNodes();
 
   public abstract Integer getNextRunningNodeIndex(int startIndex);
+
+  public abstract Integer getPreviousRunningNodeIndex(int startIndex);
 }

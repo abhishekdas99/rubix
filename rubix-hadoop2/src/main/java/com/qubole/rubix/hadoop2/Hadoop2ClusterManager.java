@@ -183,11 +183,39 @@ public class Hadoop2ClusterManager extends ClusterManager
     try {
       List<String> nodeList = new ArrayList<>(nodesCache.get("nodeList").keySet());
       for (int i = startIndex; i < (startIndex + nodeList.size()); i++) {
-        int index = i % nodeList.size();
+        int index = i > nodeList.size() ? (i - nodeList.size()) : i;
         String nodeState = nodesCache.get("nodeList").get(nodeList.get(index));
         if (nodeState.equalsIgnoreCase("Running") || nodeState.equalsIgnoreCase("New")
             || nodeState.equalsIgnoreCase("Rebooted")) {
           return index;
+        }
+      }
+    }
+    catch (ExecutionException e) {
+      e.printStackTrace();
+    }
+
+    return null;
+  }
+
+  @Override
+  public Integer getPreviousRunningNodeIndex(int startIndex)
+  {
+    try {
+      List<String> nodeList = new ArrayList<>(nodesCache.get("nodeList").keySet());
+      for (int i = startIndex; i >= 0; i--) {
+        String nodeState = nodesCache.get("nodeList").get(nodeList.get(i));
+        if (nodeState.equalsIgnoreCase("Running") || nodeState.equalsIgnoreCase("New")
+            || nodeState.equalsIgnoreCase("Rebooted")) {
+          return i;
+        }
+      }
+
+      for (int i = nodeList.size() - 1; i > startIndex; i--) {
+        String nodeState = nodesCache.get("nodeList").get(nodeList.get(i));
+        if (nodeState.equalsIgnoreCase("Running") || nodeState.equalsIgnoreCase("New")
+            || nodeState.equalsIgnoreCase("Rebooted")) {
+          return i;
         }
       }
     }

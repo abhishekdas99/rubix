@@ -188,7 +188,13 @@ public class BookKeeper implements com.qubole.rubix.spi.BookKeeperService.Iface
     HashFunction hf = Hashing.md5();
     HashCode hc = hf.hashString(key, Charsets.UTF_8);
     int initialNodeIndex = Hashing.consistentHash(hc, nodes.size());
-    int finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
+    int finalNodeIndex = initialNodeIndex;
+    if (hc.asInt() % 2 == 0) {
+      finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
+    }
+    else {
+      finalNodeIndex = clusterManager.getPreviousRunningNodeIndex(initialNodeIndex);
+    }
 
     return finalNodeIndex;
   }
