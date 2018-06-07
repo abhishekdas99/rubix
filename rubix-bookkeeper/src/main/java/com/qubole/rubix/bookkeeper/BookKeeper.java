@@ -14,16 +14,12 @@ package com.qubole.rubix.bookkeeper;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.MetricRegistry;
-import com.google.common.base.Charsets;
 import com.google.common.base.Throwables;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import com.google.common.cache.Weigher;
-import com.google.common.hash.HashCode;
-import com.google.common.hash.HashFunction;
-import com.google.common.hash.Hashing;
 import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.core.RemoteReadRequestChain;
 import com.qubole.rubix.hadoop2.Hadoop2ClusterManager;
@@ -132,7 +128,7 @@ public class BookKeeper implements com.qubole.rubix.spi.BookKeeperService.Iface
         end = fileLength;
       }
       String key = remotePath + i + end;
-      int nodeIndex = getNodeIndex(key);
+      int nodeIndex = clusterManager.getNodeIndex(nodes.size(), key);
       blockSplits.put(blockNumber, nodes.get(nodeIndex));
       blockNumber++;
     }
@@ -181,22 +177,6 @@ public class BookKeeper implements com.qubole.rubix.spi.BookKeeperService.Iface
     }
 
     return blockLocations;
-  }
-
-  private int getNodeIndex(String key)
-  {
-    HashFunction hf = Hashing.md5();
-    HashCode hc = hf.hashString(key, Charsets.UTF_8);
-    int initialNodeIndex = Hashing.consistentHash(hc, nodes.size());
-    int finalNodeIndex = initialNodeIndex;
-    if (hc.asInt() % 2 == 0) {
-      finalNodeIndex = clusterManager.getNextRunningNodeIndex(initialNodeIndex);
-    }
-    else {
-      finalNodeIndex = clusterManager.getPreviousRunningNodeIndex(initialNodeIndex);
-    }
-
-    return finalNodeIndex;
   }
 
   private void initializeClusterManager(int clusterType)
