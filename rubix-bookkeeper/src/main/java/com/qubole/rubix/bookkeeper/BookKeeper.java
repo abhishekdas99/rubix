@@ -22,6 +22,7 @@ import com.google.common.cache.RemovalNotification;
 import com.google.common.cache.Weigher;
 import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.core.RemoteReadRequestChain;
+import com.qubole.rubix.core.utils.DummyClusterManager;
 import com.qubole.rubix.hadoop2.Hadoop2ClusterManager;
 import com.qubole.rubix.presto.PrestoClusterManager;
 import com.qubole.rubix.spi.BlockLocation;
@@ -196,11 +197,12 @@ public class BookKeeper implements com.qubole.rubix.spi.BookKeeperService.Iface
           }
 
           if (clusterType == TEST_CLUSTER_MANAGER.ordinal()) {
-            nodes = new ArrayList<>();
-            nodeName = nodeHostName;
-            nodes.add(nodeName);
-            splitSize = 64 * 1024 * 1024;
+            clusterManager = new DummyClusterManager();
+            nodes = clusterManager.getNodes();
+            splitSize = clusterManager.getSplitSize();
             currentNodeIndex = 0;
+            nodeName = nodes.get(currentNodeIndex);
+            this.clusterManager = clusterManager;
             return;
           }
           else {

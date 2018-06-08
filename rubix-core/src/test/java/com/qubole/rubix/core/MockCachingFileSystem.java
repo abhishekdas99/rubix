@@ -12,6 +12,7 @@
  */
 package com.qubole.rubix.core;
 
+import com.qubole.rubix.core.utils.DummyClusterManager;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.ClusterManager;
 import com.qubole.rubix.spi.ClusterType;
@@ -26,8 +27,6 @@ import org.apache.hadoop.fs.RawLocalFileSystem;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Created by sakshia on 25/11/16.
@@ -58,7 +57,7 @@ public class MockCachingFileSystem extends CachingFileSystem<RawLocalFileSystem>
       return;
     }
 
-    clusterManager = new TestClusterManager();
+    clusterManager = new DummyClusterManager();
     clusterManager.initialize(conf);
   }
 
@@ -88,35 +87,5 @@ public class MockCachingFileSystem extends CachingFileSystem<RawLocalFileSystem>
   {
     FSDataInputStream stream = fs.open(path, CacheConfig.getBlockSize(conf));
     return stream;
-  }
-
-  class TestClusterManager extends ClusterManager
-  {
-    @Override
-    public List<String> getNodes()
-    {
-      List<String> list = new ArrayList<String>();
-      list.add("localhost");
-
-      return list;
-    }
-
-    @Override
-    public Integer getNextRunningNodeIndex(int startIndex)
-    {
-      return startIndex;
-    }
-
-    @Override
-    public Integer getPreviousRunningNodeIndex(int startIndex)
-    {
-      return startIndex;
-    }
-
-    @Override
-    public boolean isMaster()
-    {
-      return false;
-    }
   }
 }
