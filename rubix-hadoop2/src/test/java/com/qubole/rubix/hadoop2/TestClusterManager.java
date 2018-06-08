@@ -43,6 +43,9 @@ public class TestClusterManager
   // The worker hostnames used for verifying cluster manager behaviour
   private static final String WORKER_HOSTNAME_1 = "192.168.1.3";
   private static final String WORKER_HOSTNAME_2 = "192.168.2.252";
+  private static final String WORKER_HOSTNAME_3 = "192.168.1.6";
+  private static final String WORKER_HOSTNAME_4 = "192.168.2.4";
+  private static final String WORKER_HOSTNAME_5 = "192.168.2.254";
 
   @Test
   /*
@@ -54,7 +57,7 @@ public class TestClusterManager
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleRunningWorkers());
 
     assertTrue(nodeHostnames.size() == 2, "Should only have two nodes");
-    assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_1) && nodeHostnames.get(1).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
+    assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2) && nodeHostnames.get(1).equals(WORKER_HOSTNAME_1), "Wrong nodes data");
   }
 
   @Test
@@ -80,7 +83,7 @@ public class TestClusterManager
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleWorkersOneNew());
 
     assertTrue(nodeHostnames.size() == 2, "Should only have two nodes");
-    assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_1) && nodeHostnames.get(1).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
+    assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2) && nodeHostnames.get(1).equals(WORKER_HOSTNAME_1), "Wrong nodes data");
   }
 
   @Test
@@ -93,7 +96,7 @@ public class TestClusterManager
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleWorkersOneRebooted());
 
     assertTrue(nodeHostnames.size() == 2, "Should only have two nodes");
-    assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_1) && nodeHostnames.get(1).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
+    assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2) && nodeHostnames.get(1).equals(WORKER_HOSTNAME_1), "Wrong nodes data");
   }
 
   @Test
@@ -118,7 +121,7 @@ public class TestClusterManager
   {
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleWorkersOneDecommissioned());
 
-    assertTrue(nodeHostnames.size() == 1, "Should only have one node");
+    assertTrue(nodeHostnames.size() == 2, "Should only have one node");
     assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
   }
 
@@ -131,8 +134,44 @@ public class TestClusterManager
   {
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleWorkersOneDecommissioning());
 
-    assertTrue(nodeHostnames.size() == 1, "Should only have one node");
+    assertTrue(nodeHostnames.size() == 2, "Should only have one node");
     assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
+  }
+
+  @Test
+  public void testnodeID_decommissioned()
+      throws IOException
+  {
+    String key = "1";
+    final List<String> nodeHostnames1 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkers());
+    final List<String> nodeHostnames2 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkersOneDecommissioned());
+
+    assertTrue(nodeHostnames1.size() == 4, "Should have four nodes");
+    assertTrue(nodeHostnames2.size() == 5, "Should have five nodes");
+
+    int nodeIndex1 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkers(), key);
+    int nodeIndex2 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkersOneDecommissioned(), key);
+
+    String nodeName1 = nodeHostnames1.get(nodeIndex1);
+    String nodeName2 = nodeHostnames2.get(nodeIndex2);
+
+    assertTrue(nodeName1.equals(nodeName2), "Both should be the same node");
+  }
+
+  private class FourWorkers extends TestWorker
+  {
+    public FourWorkers()
+    {
+      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"RUNNING\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}]}}\n");
+    }
+  }
+
+  private class FourWorkersOneDecommissioned extends TestWorker
+  {
+    public FourWorkersOneDecommissioned()
+    {
+      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"DECOMMISSIONED\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_5 + "\",\"state\":\"RUNNING\"}]}}\n");
+    }
   }
 
   @Test
@@ -144,7 +183,7 @@ public class TestClusterManager
   {
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleWorkersOneLost());
 
-    assertTrue(nodeHostnames.size() == 1, "Should only have one node");
+    assertTrue(nodeHostnames.size() == 2, "Should only have one node");
     assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
   }
 
@@ -157,7 +196,7 @@ public class TestClusterManager
   {
     final List<String> nodeHostnames = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new MultipleWorkersOneUnhealthy());
 
-    assertTrue(nodeHostnames.size() == 1, "Should only have one node");
+    assertTrue(nodeHostnames.size() == 2, "Should only have one node");
     assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
   }
 
@@ -212,6 +251,20 @@ public class TestClusterManager
 
     server.stop(0);
     return nodes;
+  }
+
+  private int getConsistentHashedNodeIndexFromCluster(String endpoint, HttpHandler responseHandler, String key)
+      throws IOException
+  {
+    final HttpServer server = createServer(endpoint, responseHandler);
+    log.info("STARTED SERVER");
+
+    final ClusterManager clusterManager = buildHadoop2ClusterManager();
+    final List<String> nodes = clusterManager.getNodes();
+    final int index = clusterManager.getNodeIndex(nodes.size(), key);
+
+    server.stop(0);
+    return index;
   }
 
   /**
