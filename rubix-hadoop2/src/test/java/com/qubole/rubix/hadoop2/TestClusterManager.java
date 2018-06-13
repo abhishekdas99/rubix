@@ -25,7 +25,12 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
 import static org.testng.Assert.assertTrue;
 
@@ -46,6 +51,7 @@ public class TestClusterManager
   private static final String WORKER_HOSTNAME_3 = "192.168.1.6";
   private static final String WORKER_HOSTNAME_4 = "192.168.2.4";
   private static final String WORKER_HOSTNAME_5 = "192.168.2.254";
+  private static final String WORKER_HOSTNAME_6 = "192.168.2.255";
 
   @Test
   /*
@@ -139,42 +145,6 @@ public class TestClusterManager
   }
 
   @Test
-  public void testnodeID_decommissioned()
-      throws IOException
-  {
-    String key = "1";
-    final List<String> nodeHostnames1 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkers());
-    final List<String> nodeHostnames2 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkersOneDecommissioned());
-
-    assertTrue(nodeHostnames1.size() == 4, "Should have four nodes");
-    assertTrue(nodeHostnames2.size() == 5, "Should have five nodes");
-
-    int nodeIndex1 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkers(), key);
-    int nodeIndex2 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkersOneDecommissioned(), key);
-
-    String nodeName1 = nodeHostnames1.get(nodeIndex1);
-    String nodeName2 = nodeHostnames2.get(nodeIndex2);
-
-    assertTrue(nodeName1.equals(nodeName2), "Both should be the same node");
-  }
-
-  private class FourWorkers extends TestWorker
-  {
-    public FourWorkers()
-    {
-      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"RUNNING\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}]}}\n");
-    }
-  }
-
-  private class FourWorkersOneDecommissioned extends TestWorker
-  {
-    public FourWorkersOneDecommissioned()
-    {
-      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"DECOMMISSIONED\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_5 + "\",\"state\":\"RUNNING\"}]}}\n");
-    }
-  }
-
-  @Test
   /*
    * Tests that in a cluster with lost node, lost node is not returned.
    */
@@ -198,6 +168,151 @@ public class TestClusterManager
 
     assertTrue(nodeHostnames.size() == 2, "Should only have one node");
     assertTrue(nodeHostnames.get(0).equals(WORKER_HOSTNAME_2), "Wrong nodes data");
+  }
+
+  @Test
+  public void consistent_hashing_spotloss()
+      throws IOException
+  {
+    String key = "1";
+    final List<String> nodeHostnames1 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkers());
+    final List<String> nodeHostnames2 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, new FourLiveWorkersOneDecommissioned());
+
+    assertTrue(nodeHostnames1.size() == 4, "Should have four nodes");
+    assertTrue(nodeHostnames2.size() == 5, "Should have five nodes");
+
+    int nodeIndex1 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, new FourWorkers(), key);
+    int nodeIndex2 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, new FourLiveWorkersOneDecommissioned(), key);
+
+    String nodeName1 = nodeHostnames1.get(nodeIndex1);
+    String nodeName2 = nodeHostnames2.get(nodeIndex2);
+
+    assertTrue(nodeName1.equals(nodeName2), "Both should be the same node");
+  }
+
+  @Test
+  public void consistent_hashing_upscaling()
+      throws IOException
+  {
+    int numKeys = 200;
+    Set<String> keys = generateRandomKeys(numKeys);
+    int match = matchMemberships(new FourWorkers(), new SixWorkers(), keys);
+    int percenrage = ((match * 100) / numKeys);
+    System.out.println(" Upscaling -- Membership remained the same for " + percenrage + "% of keys");
+  }
+
+  @Test
+  public void consistent_hashing_downScaling()
+      throws IOException
+  {
+    int numKeys = 200;
+    Set<String> keys = generateRandomKeys(numKeys);
+    int match = matchMemberships(new SixWorkers(), new FourLiveWorkersTwoDecommissioned(), keys);
+    Map<String, Integer> keyMembership = getConsistentHashedMembership(new SixWorkers(), keys);
+    int expected = 0;
+    for (Map.Entry<String, Integer> entry : keyMembership.entrySet()) {
+      if (entry.getValue() != 0 && entry.getValue() != 5) {
+        expected++;
+      }
+    }
+
+    assertTrue(match == expected, "Distribution of the keys didn't match");
+    System.out.println(" Downscaling -- Membership changed only for the downscaled nodes ");
+  }
+
+  @Test
+  public void consistent_hashing_spotloss2()
+      throws IOException
+  {
+    int numKeys = 200;
+
+    Set<String> keys = generateRandomKeys(numKeys);
+    TestWorker prevWorker = new FourWorkers();
+
+    final List<String> nodeHostnames1 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, prevWorker);
+    Map<String, Integer> keyMembership1 = getConsistentHashedMembership(prevWorker, keys);
+
+    TestWorker newWorker = new FourLiveWorkersOneDecommissioned();
+    final List<String> nodeHostnames2 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, newWorker);
+    Map<String, Integer> keyMembership2 = getConsistentHashedMembership(newWorker, keys);
+
+    int reshuffle = 0;
+    int match = 0;
+
+    for (String key : keys) {
+      if (nodeHostnames1.get(keyMembership1.get(key)).equals(nodeHostnames2.get(keyMembership2.get(key)))) {
+        match++;
+      }
+      else if (keyMembership1.get(key) != 0) {
+        reshuffle++;
+      }
+    }
+
+    int percenrage = ((match * 100) / numKeys);
+    System.out.println(" Spotloss -- Membership remained the same for " + percenrage + "% of keys");
+
+    percenrage = ((reshuffle * 100) / numKeys);
+    System.out.println(" Spotloss -- Membership reshuffled from lost node for " + percenrage + "% of the total keys ");
+  }
+
+  private int matchMemberships(TestWorker prevWorker, TestWorker newWorker, Set<String> keys)
+      throws IOException
+  {
+    final List<String> nodeHostnames1 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, prevWorker);
+    Map<String, Integer> keyMembership1 = getConsistentHashedMembership(prevWorker, keys);
+
+    final List<String> nodeHostnames2 = getNodeHostnamesFromCluster(CLUSTER_NODES_ENDPOINT, newWorker);
+    Map<String, Integer> keyMembership2 = getConsistentHashedMembership(newWorker, keys);
+
+    int match = 0;
+    int nonMatch = 0;
+
+    for (String key : keys) {
+      if (nodeHostnames1.get(keyMembership1.get(key)).equals(nodeHostnames2.get(keyMembership2.get(key)))) {
+        match++;
+      }
+      else {
+        nonMatch++;
+      }
+    }
+
+    return match;
+  }
+
+  private Map<String, Integer> getConsistentHashedMembership(TestWorker worker, Set<String> keys)
+      throws IOException
+  {
+    Map<String, Integer> keyMembership1 = new HashMap<>();
+    int nodeIndex1 = 0;
+
+    for (String key : keys) {
+      nodeIndex1 = getConsistentHashedNodeIndexFromCluster(CLUSTER_NODES_ENDPOINT, worker, key);
+      keyMembership1.put(key, nodeIndex1);
+    }
+    return keyMembership1;
+  }
+
+  private Set<String> generateRandomKeys(int numKeys)
+  {
+    Set<String> keys = new HashSet<String>();
+    for (int i = 0; i < numKeys; i++) {
+      keys.add(getSaltString());
+    }
+
+    return keys;
+  }
+
+  protected String getSaltString()
+  {
+    String saltchars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890";
+    StringBuilder salt = new StringBuilder();
+    Random rnd = new Random();
+    while (salt.length() < 18) { // length of the random string.
+      int index = (int) (rnd.nextFloat() * saltchars.length());
+      salt.append(saltchars.charAt(index));
+    }
+    String saltStr = salt.toString();
+    return saltStr;
   }
 
   /**
@@ -385,6 +500,38 @@ public class TestClusterManager
     public OneRunningWorker()
     {
       super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"RUNNING\"}]}}");
+    }
+  }
+
+  private class FourWorkers extends TestWorker
+  {
+    public FourWorkers()
+    {
+      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"RUNNING\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}]}}\n");
+    }
+  }
+
+  private class FourLiveWorkersOneDecommissioned extends TestWorker
+  {
+    public FourLiveWorkersOneDecommissioned()
+    {
+      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"DECOMMISSIONED\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_5 + "\",\"state\":\"RUNNING\"}]}}\n");
+    }
+  }
+
+  private class SixWorkers extends TestWorker
+  {
+    public SixWorkers()
+    {
+      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"RUNNING\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_5 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_6 + "\",\"state\":\"RUNNING\"}]}}\n");
+    }
+  }
+
+  private class FourLiveWorkersTwoDecommissioned extends TestWorker
+  {
+    public FourLiveWorkersTwoDecommissioned()
+    {
+      super("{\"nodes\":{\"node\":[{\"nodeHostName\":\"" + WORKER_HOSTNAME_1 + "\",\"state\":\"DECOMMISSIONED\"},{\"nodeHostName\":\"" + WORKER_HOSTNAME_2 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_3 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_4 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_5 + "\",\"state\":\"RUNNING\"}, {\"nodeHostName\":\"" + WORKER_HOSTNAME_6 + "\",\"state\":\"DECOMMISSIONED\"}]}}\n");
     }
   }
 }

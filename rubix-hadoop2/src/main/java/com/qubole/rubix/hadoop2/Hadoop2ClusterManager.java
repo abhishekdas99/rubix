@@ -183,7 +183,7 @@ public class Hadoop2ClusterManager extends ClusterManager
     try {
       List<String> nodeList = new ArrayList<>(nodesCache.get("nodeList").keySet());
       for (int i = startIndex; i < (startIndex + nodeList.size()); i++) {
-        int index = i > nodeList.size() ? (i - nodeList.size()) : i;
+        int index = i >= nodeList.size() ? (i - nodeList.size()) : i;
         String nodeState = nodesCache.get("nodeList").get(nodeList.get(index));
         if (nodeState.equalsIgnoreCase("Running") || nodeState.equalsIgnoreCase("New")
             || nodeState.equalsIgnoreCase("Rebooted")) {
