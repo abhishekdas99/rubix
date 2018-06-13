@@ -194,7 +194,7 @@ public class TestClusterManager
   public void consistent_hashing_upscaling()
       throws IOException
   {
-    int numKeys = 200;
+    int numKeys = 100;
     Set<String> keys = generateRandomKeys(numKeys);
     int match = matchMemberships(new FourWorkers(), new SixWorkers(), keys);
     int percenrage = ((match * 100) / numKeys);
@@ -205,7 +205,7 @@ public class TestClusterManager
   public void consistent_hashing_downScaling()
       throws IOException
   {
-    int numKeys = 200;
+    int numKeys = 100;
     Set<String> keys = generateRandomKeys(numKeys);
     int match = matchMemberships(new SixWorkers(), new FourLiveWorkersTwoDecommissioned(), keys);
     Map<String, Integer> keyMembership = getConsistentHashedMembership(new SixWorkers(), keys);
@@ -224,7 +224,7 @@ public class TestClusterManager
   public void consistent_hashing_spotloss2()
       throws IOException
   {
-    int numKeys = 200;
+    int numKeys = 100;
 
     Set<String> keys = generateRandomKeys(numKeys);
     TestWorker prevWorker = new FourWorkers();
