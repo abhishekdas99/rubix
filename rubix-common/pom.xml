@@ -36,25 +36,13 @@
         <dependency>
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-core</artifactId>
-            <version>${dep.dropwizard.version}</version>
+            <version>${dep.metrics.version}</version>
         </dependency>
 
         <dependency>
             <groupId>io.dropwizard.metrics</groupId>
             <artifactId>metrics-jvm</artifactId>
-            <version>${dep.dropwizard.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.readytalk</groupId>
-            <artifactId>metrics-statsd-common</artifactId>
-            <version>4.2.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.readytalk</groupId>
-            <artifactId>metrics3-statsd</artifactId>
-            <version>4.2.0</version>
+            <version>${dep.metrics.version}</version>
         </dependency>
 
     </dependencies>

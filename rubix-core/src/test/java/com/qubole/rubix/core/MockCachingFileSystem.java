@@ -37,11 +37,16 @@ public class MockCachingFileSystem extends CachingFileSystem<RawLocalFileSystem>
   private static final String SCHEME = "file";
 
   @Override
-  public void initialize(URI uri, Configuration conf)
-      throws IOException
+  public void initialize(URI uri, Configuration conf) throws IOException
   {
     this.conf = conf;
-    log.debug("Initializing TestCachingFileSystem");
+    try {
+      initializeClusterManager(conf, ClusterType.TEST_CLUSTER_MANAGER);
+      super.initialize(uri, conf);
+    }
+    catch (ClusterManagerInitilizationException ex) {
+      throw new IOException(ex);
+    }
   }
 
   public String getScheme()
@@ -53,24 +58,22 @@ public class MockCachingFileSystem extends CachingFileSystem<RawLocalFileSystem>
   public FSDataInputStream open(Path path, int i)
       throws IOException
   {
-    String localPath = path.toString().substring(9);
+    String localPath = path.toString();
     File file = new File(localPath);
     LocalFSInputStream inputStream = new LocalFSInputStream(localPath);
     return new FSDataInputStream(
         new BufferedFSInputStream(
             new CachingInputStream(new FSDataInputStream(inputStream), conf, path, file.length(),
                 file.lastModified(), new CachingFileSystemStats(),
-                ClusterType.TEST_CLUSTER_MANAGER, bookKeeperFactory, this,
+                ClusterType.TEST_CLUSTER_MANAGER, bookKeeperFactory, fs,
                 CacheConfig.getBlockSize(conf), statistics),
             CacheConfig.getBlockSize(conf)));
   }
 
   @Override
-  public FSDataInputStream open(Path path)
-      throws IOException
+  public FSDataInputStream open(Path path) throws IOException
   {
-    String localPath = path.toString().substring(9);
-    LocalFSInputStream inputStream = new LocalFSInputStream(localPath);
-    return new FSDataInputStream(inputStream);
+    FSDataInputStream stream = fs.open(path, CacheConfig.getBlockSize(conf));
+    return stream;
   }
 }

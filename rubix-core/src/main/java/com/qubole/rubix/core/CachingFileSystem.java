@@ -20,6 +20,7 @@ import com.google.common.hash.Hashing;
 import com.qubole.rubix.spi.BookKeeperFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.ClusterManager;
+import com.qubole.rubix.spi.ClusterType;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -37,13 +38,15 @@ import org.weakref.jmx.MBeanExporter;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-import static com.qubole.rubix.spi.CacheConfig.skipCache;
+import static com.qubole.rubix.spi.CacheUtil.skipCache;
 
 /**
  * Created by stagra on 29/12/15.
@@ -51,7 +54,7 @@ import static com.qubole.rubix.spi.CacheConfig.skipCache;
 public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
 {
   private static final Log log = LogFactory.getLog(CachingFileSystem.class);
-  private T fs;
+  protected T fs;
   private static ClusterManager clusterManager;
 
   private boolean cacheSkipped;
@@ -95,6 +98,11 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     this.clusterManager = clusterManager;
   }
 
+  public ClusterManager getClusterManager()
+  {
+    return clusterManager;
+  }
+
   public void setBookKeeper(BookKeeperFactory bookKeeperFactory, Configuration conf)
   {
     this.bookKeeperFactory = bookKeeperFactory;
@@ -115,6 +123,33 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
     fs.initialize(originalUri, conf);
   }
 
+  public synchronized void initializeClusterManager(Configuration conf, ClusterType clusterType)
+      throws ClusterManagerInitilizationException
+  {
+    if (clusterManager != null) {
+      return;
+    }
+
+    String clusterManagerClassName = CacheConfig.getClusterManagerClass(conf, clusterType);
+    log.info("Initializing cluster manager : " + clusterManagerClassName);
+
+    try {
+      Class clusterManagerClass = conf.getClassByName(clusterManagerClassName);
+      Constructor constructor = clusterManagerClass.getConstructor();
+      ClusterManager manager = (ClusterManager) constructor.newInstance();
+
+      manager.initialize(conf);
+      setClusterManager(manager);
+    }
+    catch (ClassNotFoundException | NoSuchMethodException | InstantiationException |
+            IllegalAccessException | InvocationTargetException ex) {
+      String errorMessage = String.format("Not able to initialize ClusterManager class : {0} ",
+          clusterManagerClassName);
+      log.error(errorMessage);
+      throw new ClusterManagerInitilizationException(errorMessage, ex);
+    }
+  }
+
   @Override
   public URI getUri()
   {
@@ -127,7 +162,7 @@ public abstract class CachingFileSystem<T extends FileSystem> extends FileSystem
   {
     FSDataInputStream inputStream = null;
 
-    if (skipCache(path, getConf())) {
+    if (skipCache(path.toString(), getConf())) {
       inputStream = fs.open(path, bufferSize);
       cacheSkipped = true;
       return inputStream;
