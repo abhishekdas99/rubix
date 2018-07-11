@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2016. Qubole Inc
+ * Copyright (c) 2018. Qubole Inc
  * Licensed under the Apache License, Version 2.0 (the License);
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -16,6 +16,8 @@ import com.codahale.metrics.MetricRegistry;
 import com.qubole.rubix.common.MetricsFactory;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.ClusterType;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.thrift.shaded.TException;
 import org.testng.annotations.BeforeClass;
@@ -29,6 +31,8 @@ import static org.testng.Assert.assertEquals;
 
 public class TestBookKeeperMetrics
 {
+  private static final Log log = LogFactory.getLog(TestBookKeeperMetrics.class);
+
   private static final int BLOCK_SIZE = 100;
 
   private final MetricRegistry metrics = new MetricRegistry();
