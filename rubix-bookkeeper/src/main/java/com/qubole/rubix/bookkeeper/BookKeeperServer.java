@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2016. Qubole Inc
+ * Copyright (c) 2018. Qubole Inc
  * Licensed under the Apache License, Version 2.0 (the License);
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,12 +12,13 @@
  */
 package com.qubole.rubix.bookkeeper;
 
-import com.codahale.metrics.Gauge;
+import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
-import com.qubole.rubix.spi.BookKeeperService;
+import com.qubole.rubix.core.utils.ClusterUtil;
 import com.qubole.rubix.spi.CacheConfig;
+import com.qubole.rubix.spi.thrift.BookKeeperService;
 import com.readytalk.metrics.StatsDReporter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -42,14 +43,11 @@ import static com.qubole.rubix.spi.CacheConfig.getServerPort;
  */
 public class BookKeeperServer extends Configured implements Tool
 {
-  // Metric key for liveness of the BookKeeper daemon.
-  public static final String METRIC_BOOKKEEPER_LIVENESS_CHECK = "rubix.bookkeeper.liveness.gauge";
-
   public static BookKeeper bookKeeper;
   public static BookKeeperService.Processor processor;
 
   // Registry for gathering & storing necessary metrics
-  private static MetricRegistry metrics;
+  protected static MetricRegistry metrics;
 
   public static Configuration conf;
 
@@ -57,7 +55,7 @@ public class BookKeeperServer extends Configured implements Tool
 
   private static Log log = LogFactory.getLog(BookKeeperServer.class.getName());
 
-  private BookKeeperServer()
+  protected BookKeeperServer()
   {
   }
 
@@ -121,30 +119,29 @@ public class BookKeeperServer extends Configured implements Tool
   /**
    * Register desired metrics.
    */
-  private static void registerMetrics(Configuration conf)
+  protected static void registerMetrics(Configuration conf)
   {
     if ((CacheConfig.isOnMaster(conf) && CacheConfig.isReportStatsdMetricsOnMaster(conf))
         || (!CacheConfig.isOnMaster(conf) && CacheConfig.isReportStatsdMetricsOnWorker(conf))) {
       log.info("Reporting metrics to StatsD");
+      if (!CacheConfig.isOnMaster(conf)) {
+        CacheConfig.setStatsDMetricsHost(conf, ClusterUtil.getMasterHostname(conf));
+      }
       StatsDReporter.forRegistry(metrics)
           .build(CacheConfig.getStatsDMetricsHost(conf), CacheConfig.getStatsDMetricsPort(conf))
           .start(CacheConfig.getStatsDMetricsInterval(conf), TimeUnit.MILLISECONDS);
     }
-
-    metrics.register(METRIC_BOOKKEEPER_LIVENESS_CHECK, new Gauge<Integer>()
-    {
-      @Override
-      public Integer getValue()
-      {
-        return 1;
-      }
-    });
   }
 
   public static void stopServer()
   {
-    metrics.remove(METRIC_BOOKKEEPER_LIVENESS_CHECK);
+    removeMetrics();
     server.stop();
+  }
+
+  protected static void removeMetrics()
+  {
+    metrics.removeMatching(MetricFilter.ALL);
   }
 
   @VisibleForTesting

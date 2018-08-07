@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2016. Qubole Inc
+ * Copyright (c) 2018. Qubole Inc
  * Licensed under the Apache License, Version 2.0 (the License);
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,6 +15,8 @@ package com.qubole.rubix.bookkeeper;
 
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Ticker;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.qubole.rubix.spi.CacheConfig;
@@ -37,8 +39,15 @@ public class CoordinatorBookKeeper extends BookKeeper
 
   public CoordinatorBookKeeper(Configuration conf, MetricRegistry metrics) throws FileNotFoundException
   {
-    super(conf, metrics);
+    this(conf, metrics, Ticker.systemTicker());
+  }
+
+  @VisibleForTesting
+  CoordinatorBookKeeper(Configuration conf, MetricRegistry metrics, Ticker ticker) throws FileNotFoundException
+  {
+    super(conf, metrics, ticker);
     this.liveWorkerCache = CacheBuilder.newBuilder()
+        .ticker(ticker)
         .expireAfterWrite(CacheConfig.getWorkerLivenessExpiry(conf), TimeUnit.MILLISECONDS)
         .build();
 
@@ -62,9 +71,9 @@ public class CoordinatorBookKeeper extends BookKeeper
       @Override
       public Integer getValue()
       {
+        log.debug(String.format("Reporting %s workers", liveWorkerCache.asMap().size()));
         return liveWorkerCache.asMap().size();
       }
     });
-    log.debug(String.format("Reporting %s workers", liveWorkerCache.asMap().size()));
   }
 }

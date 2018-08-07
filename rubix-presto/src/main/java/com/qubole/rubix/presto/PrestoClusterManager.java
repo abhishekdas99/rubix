@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2016. Qubole Inc
+ * Copyright (c) 2018. Qubole Inc
  * Licensed under the Apache License, Version 2.0 (the License);
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
+import com.qubole.rubix.core.utils.ClusterUtil;
 import com.qubole.rubix.spi.ClusterManager;
 import com.qubole.rubix.spi.ClusterType;
 import org.apache.commons.logging.Log;
@@ -67,7 +68,7 @@ public class PrestoClusterManager extends ClusterManager
   {
     super.initialize(conf);
     this.serverPort = conf.getInt(serverPortConf, serverPort);
-    this.serverAddress = getMasterHostname(conf);
+    this.serverAddress = ClusterUtil.getMasterHostname(conf);
     ExecutorService executor = Executors.newSingleThreadExecutor();
     nodesCache = CacheBuilder.newBuilder()
         .refreshAfterWrite(getNodeRefreshTime(), TimeUnit.SECONDS)
@@ -194,25 +195,6 @@ public class PrestoClusterManager extends ClusterManager
         }, executor));
   }
 
-  private String getMasterHostname(Configuration conf)
-  {
-    // TODO move to common place (used in HeartbeatService)
-    String host;
-    log.debug("Trying master.hostname");
-    host = conf.get(serverAddressConf);
-    if (host != null) {
-      return host;
-    }
-    log.debug("Trying yarn.resourcemanager.address");
-    host = conf.get(yarnServerAddressConf);
-    if (host != null) {
-      host = host.substring(0, host.indexOf(":"));
-      return host;
-    }
-    log.debug("No hostname found in etc/*-site.xml, returning localhost");
-    return serverAddress;
-  }
-
   @Override
   public boolean isMaster()
       throws ExecutionException
@@ -236,6 +218,18 @@ public class PrestoClusterManager extends ClusterManager
       log.info("Error fetching node list : ", e);
     }
     return null;
+  }
+
+  @Override
+  public Integer getNextRunningNodeIndex(int startIndex)
+  {
+    return startIndex;
+  }
+
+  @Override
+  public Integer getPreviousRunningNodeIndex(int startIndex)
+  {
+    return startIndex;
   }
 
   @Override
