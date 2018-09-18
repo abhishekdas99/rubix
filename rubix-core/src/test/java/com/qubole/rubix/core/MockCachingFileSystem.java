@@ -63,7 +63,7 @@ public class MockCachingFileSystem extends CachingFileSystem<RawLocalFileSystem>
     LocalFSInputStream inputStream = new LocalFSInputStream(localPath);
     return new FSDataInputStream(
         new BufferedFSInputStream(
-            new CachingInputStream(new FSDataInputStream(inputStream), conf, path, file.length(),
+            new CachingInputStream(conf, path, file.length(),
                 file.lastModified(), new CachingFileSystemStats(),
                 ClusterType.TEST_CLUSTER_MANAGER, bookKeeperFactory, fs,
                 CacheConfig.getBlockSize(conf), statistics),

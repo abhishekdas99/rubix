@@ -442,7 +442,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
                                    long lastModified, int clusterType) throws TException
   {
     int blockSize = CacheConfig.getBlockSize(conf);
-    byte[] buffer = new byte[blockSize];
+    byte[] buffer = null;
     ByteBuffer byteBuffer = null;
     String localPath = CacheUtil.getLocalPath(remotePath, conf);
     FileSystem fs = null;
@@ -450,45 +450,51 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     Path path = new Path(remotePath);
     long startBlock = offset / blockSize;
     long endBlock = ((offset + (length - 1)) / CacheConfig.getBlockSize(conf)) + 1;
+    long expectedBytesToRead = 0;
+    List<ReadRequest> requests = new ArrayList<ReadRequest>();
+
     try {
       int idx = 0;
+      int bufferSize = (int) ((endBlock - startBlock) * CacheConfig.getBlockSize(conf));
+      buffer = new byte[bufferSize];
       List<BlockLocation> blockLocations = getCacheStatus(remotePath, fileSize, lastModified, startBlock, endBlock, clusterType);
 
       for (long blockNum = startBlock; blockNum < endBlock; blockNum++, idx++) {
         long readStart = blockNum * blockSize;
         log.debug(" blockLocation is: " + blockLocations.get(idx).getLocation() + " for path " + remotePath + " offset " + offset + " length " + length);
         if (blockLocations.get(idx).getLocation() != Location.CACHED) {
-          if (byteBuffer == null) {
-            byteBuffer = ByteBuffer.allocateDirect(CacheConfig.getDiskReadBufferSize(conf));
-          }
+          expectedBytesToRead += (readStart + blockSize) > fileSize ? (fileSize - readStart) : blockSize;
+          ReadRequest request = new ReadRequest(readStart, readStart + blockSize, readStart, readStart + blockSize, buffer, 0, fileSize);
+          requests.add(request);
+        }
+      }
 
-          if (fs == null) {
-            fs = path.getFileSystem(conf);
-            log.info("Initializing FileSystem " + fs.toString() + " for Path " + path.toString());
-            fs.initialize(path.toUri(), conf);
+      if (requests.size() > 0) {
+        byteBuffer = ByteBuffer.allocateDirect(CacheConfig.getDiskReadBufferSize(conf));
 
-            inputStream = fs.open(path, blockSize);
-          }
+        fs = path.getFileSystem(conf);
+        log.info("Initializing FileSystem " + fs.toString() + " for Path " + path.toString());
+        fs.initialize(path.toUri(), conf);
+        inputStream = fs.open(path, blockSize);
 
-          // Cache the data
-          // Ue RRRC directly instead of creating instance of CachingFS as in certain circumstances, CachingFS could
-          // send this request to NonLocalRRC which would be wrong as that would not cache it on disk
-          long expectedBytesToRead = (readStart + blockSize) > fileSize ? (fileSize - readStart) : blockSize;
-          RemoteReadRequestChain remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath, byteBuffer, buffer, new BookKeeperFactory(this));
-          remoteReadRequestChain.addReadRequest(new ReadRequest(readStart, readStart + blockSize, readStart, readStart + blockSize, buffer, 0, fileSize));
-          remoteReadRequestChain.lock();
-          Integer dataRead = remoteReadRequestChain.call();
+        RemoteReadRequestChain remoteReadRequestChain = new RemoteReadRequestChain(fs, remotePath, localPath, byteBuffer, buffer, new BookKeeperFactory(this));
 
-          // Making sure the data downloaded matches with the expected bytes. If not, there is some problem with
-          // the download this time. So won't update the cache metadata and return false so that client can
-          // fall back on the directread
-          if (dataRead == expectedBytesToRead) {
-            remoteReadRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
-          }
-          else {
-            log.error("Not able to download requested bytes. Not updating the cache for block " + startBlock);
-            return false;
-          }
+        for (ReadRequest request : requests) {
+          remoteReadRequestChain.addReadRequest(request);
+        }
+
+        remoteReadRequestChain.lock();
+        Integer dataRead = remoteReadRequestChain.call();
+
+        // Making sure the data downloaded matches with the expected bytes. If not, there is some problem with
+        // the download this time. So won't update the cache metadata and return false so that client can
+        // fall back on the directread
+        if (dataRead == expectedBytesToRead) {
+          remoteReadRequestChain.updateCacheStatus(remotePath, fileSize, lastModified, blockSize, conf);
+        }
+        else {
+          log.error("Not able to download requested bytes. Not updating the cache for block " + startBlock);
+          return false;
         }
       }
       return true;
@@ -498,6 +504,7 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       return false;
     }
     finally {
+      buffer = null;
       if (inputStream != null) {
         try {
           inputStream.close();

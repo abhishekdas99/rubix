@@ -20,6 +20,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -37,8 +39,8 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class RemoteReadRequestChain extends ReadRequestChain
 {
-  final FSDataInputStream inputStream;
-
+  private FileSystem remoteFileSystem;
+  private String remotePath;
   private ByteBuffer directBuffer;
   private byte[] affixBuffer;
   private int totalPrefixRead;
@@ -53,20 +55,22 @@ public class RemoteReadRequestChain extends ReadRequestChain
 
   private String localFile;
 
-  public RemoteReadRequestChain(FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer)
+  public RemoteReadRequestChain(FileSystem remoteFileSystem, String remotePath, String localfile, ByteBuffer directBuffer, byte[] affixBuffer)
       throws IOException
   {
-    this(inputStream,
+    this(remoteFileSystem,
+        remotePath,
         localfile,
         directBuffer,
         affixBuffer,
         new BookKeeperFactory());
   }
 
-  public RemoteReadRequestChain(FSDataInputStream inputStream, String localfile, ByteBuffer directBuffer, byte[] affixBuffer, BookKeeperFactory bookKeeperFactory)
+  public RemoteReadRequestChain(FileSystem remoteFileSystem, String remotePath, String localfile, ByteBuffer directBuffer, byte[] affixBuffer, BookKeeperFactory bookKeeperFactory)
       throws IOException
   {
-    this.inputStream = inputStream;
+    this.remoteFileSystem = remoteFileSystem;
+    this.remotePath = remotePath;
     this.directBuffer = directBuffer;
     this.affixBuffer = affixBuffer;
     this.blockSize = affixBuffer.length;
@@ -75,10 +79,10 @@ public class RemoteReadRequestChain extends ReadRequestChain
   }
 
   @VisibleForTesting
-  public RemoteReadRequestChain(FSDataInputStream inputStream, String fileName)
+  public RemoteReadRequestChain(FileSystem remoteFileSystem, String remotePath, String localFile)
       throws IOException
   {
-    this(inputStream, fileName, ByteBuffer.allocate(100), new byte[100]);
+    this(remoteFileSystem, remotePath, localFile, ByteBuffer.allocate(100), new byte[100]);
   }
 
   public Integer call()
@@ -99,8 +103,12 @@ public class RemoteReadRequestChain extends ReadRequestChain
       file.setReadable(true, false);
     }
 
-    FileChannel fileChannel = new FileOutputStream(new RandomAccessFile(file, "rw").getFD()).getChannel();
+    FSDataInputStream inputStream = null;
+    FileChannel fileChannel = null;
+
     try {
+      fileChannel = new FileOutputStream(new RandomAccessFile(file, "rw").getFD()).getChannel();
+      inputStream = remoteFileSystem.open(new Path(remotePath));
       for (ReadRequest readRequest : readRequests) {
         if (cancelled) {
           propagateCancel(this.getClass().getName());
@@ -114,14 +122,14 @@ public class RemoteReadRequestChain extends ReadRequestChain
 
         if (prefixBufferLength > 0) {
           log.debug(String.format("Trying to Read %d bytes into prefix buffer", prefixBufferLength));
-          totalPrefixRead += readIntoBuffer(affixBuffer, 0, prefixBufferLength);
+          totalPrefixRead += readIntoBuffer(affixBuffer, 0, prefixBufferLength, inputStream);
           log.debug(String.format("Read %d bytes into prefix buffer", prefixBufferLength));
           copyIntoCache(fileChannel, affixBuffer, 0, prefixBufferLength, readRequest.backendReadStart);
           log.debug(String.format("Copied %d prefix bytes into cache", prefixBufferLength));
         }
 
         log.debug(String.format("Trying to Read %d bytes into destination buffer", readRequest.getActualReadLength()));
-        int readBytes = readIntoBuffer(readRequest.getDestBuffer(), readRequest.destBufferOffset, readRequest.getActualReadLength());
+        int readBytes = readIntoBuffer(readRequest.getDestBuffer(), readRequest.destBufferOffset, readRequest.getActualReadLength(), inputStream);
         log.debug(String.format("Read %d bytes into destination buffer", readBytes));
         copyIntoCache(fileChannel, readRequest.destBuffer, readRequest.destBufferOffset, readBytes, readRequest.actualReadStart);
         log.debug(String.format("Copied %d requested bytes into cache", readBytes));
@@ -131,7 +139,7 @@ public class RemoteReadRequestChain extends ReadRequestChain
           // If already in reading actually required data we get a eof, then there should not have been a suffix request
           checkState(readBytes == readRequest.getActualReadLength(), "Actual read less than required, still requested for suffix");
           log.debug(String.format("Trying to Read %d bytes into suffix buffer", suffixBufferLength));
-          totalSuffixRead += readIntoBuffer(affixBuffer, 0, suffixBufferLength);
+          totalSuffixRead += readIntoBuffer(affixBuffer, 0, suffixBufferLength, inputStream);
           log.debug(String.format("Read %d bytes into suffix buffer", suffixBufferLength));
           copyIntoCache(fileChannel, affixBuffer, 0, suffixBufferLength, readRequest.actualReadEnd);
           log.debug(String.format("Copied %d suffix bytes into cache", suffixBufferLength));
@@ -141,11 +149,18 @@ public class RemoteReadRequestChain extends ReadRequestChain
       return totalRequestedRead;
     }
     finally {
-      fileChannel.close();
+      if (fileChannel != null) {
+        fileChannel.close();
+        fileChannel = null;
+      }
+      if (inputStream != null) {
+        inputStream.close();
+        inputStream = null;
+      }
     }
   }
 
-  private int readIntoBuffer(byte[] destBuffer, int destBufferOffset, int length)
+  private int readIntoBuffer(byte[] destBuffer, int destBufferOffset, int length, FSDataInputStream inputStream)
       throws IOException
   {
     int nread = 0;

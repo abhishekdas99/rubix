@@ -15,6 +15,8 @@ package com.qubole.rubix.core;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -25,14 +27,16 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class DirectReadRequestChain extends ReadRequestChain
 {
-  FSDataInputStream inputStream;
+  FileSystem remoteFileSystem;
+  String remotePath;
   int totalRead;
 
   private static final Log log = LogFactory.getLog(DirectReadRequestChain.class);
 
-  public DirectReadRequestChain(FSDataInputStream inputStream)
+  public DirectReadRequestChain(FileSystem remoteFileSystem, String remotePath)
   {
-    this.inputStream = inputStream;
+    this.remoteFileSystem = remoteFileSystem;
+    this.remotePath = remotePath;
   }
 
   @Override
@@ -44,8 +48,7 @@ public class DirectReadRequestChain extends ReadRequestChain
   }
 
   @Override
-  public Integer call()
-      throws Exception
+  public Integer call() throws Exception
   {
     Thread.currentThread().setName(threadName);
     long startTime = System.currentTimeMillis();
@@ -55,25 +58,34 @@ public class DirectReadRequestChain extends ReadRequestChain
     }
 
     checkState(isLocked, "Trying to execute Chain without locking");
-
-    for (ReadRequest readRequest : readRequests) {
-      if (cancelled) {
-        propagateCancel(this.getClass().getName());
-      }
-      inputStream.seek(readRequest.actualReadStart);
-      int nread = 0;
-      while (nread < readRequest.getActualReadLength()) {
-        int nbytes = inputStream.read(readRequest.getDestBuffer(), readRequest.getDestBufferOffset() + nread, readRequest.getActualReadLength() - nread);
-        if (nbytes < 0) {
-          log.info(String.format("Returning Read %d bytes directly from remote, no caching", totalRead));
-          return nread;
+    FSDataInputStream inputStream = null;
+    try {
+      inputStream = remoteFileSystem.open(new Path(remotePath));
+      for (ReadRequest readRequest : readRequests) {
+        if (cancelled) {
+          propagateCancel(this.getClass().getName());
         }
-        nread += nbytes;
+        inputStream.seek(readRequest.actualReadStart);
+        int nread = 0;
+        while (nread < readRequest.getActualReadLength()) {
+          int nbytes = inputStream.read(readRequest.getDestBuffer(), readRequest.getDestBufferOffset() + nread, readRequest.getActualReadLength() - nread);
+          if (nbytes < 0) {
+            log.info(String.format("Returning Read %d bytes directly from remote, no caching", totalRead));
+            return nread;
+          }
+          nread += nbytes;
+        }
+        totalRead += nread;
       }
-      totalRead += nread;
+      log.info(String.format("Read %d bytes directly from remote, no caching", totalRead));
+      log.debug("DirectReadRequest took : " + (System.currentTimeMillis() - startTime) + " msecs ");
+      return totalRead;
     }
-    log.info(String.format("Read %d bytes directly from remote, no caching", totalRead));
-    log.debug("DirectReadRequest took : " + (System.currentTimeMillis() - startTime) + " msecs ");
-    return totalRead;
+    finally {
+      if (inputStream != null) {
+        inputStream.close();
+        inputStream = null;
+      }
+    }
   }
 }
