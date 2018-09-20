@@ -15,7 +15,9 @@ package com.qubole.rubix.core;
 import com.qubole.rubix.core.utils.DataGen;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -32,9 +34,8 @@ import static org.testng.Assert.assertTrue;
  */
 public class TestRemoteReadRequestChain
 {
-  FSDataInputStream fsDataInputStream;
-
   String backendFileName = "/tmp/testRemoteReadRequestChainBackendFile";
+  String backendFilePath = "file:///tmp/testRemoteReadRequestChainBackendFile";
   File backendFile = new File(backendFileName);
 
   String localFileName = "/tmp/testRemoteReadRequestChainLocalFile";
@@ -50,10 +51,11 @@ public class TestRemoteReadRequestChain
     // Populate File
     DataGen.populateFile(backendFileName);
 
-    LocalFSInputStream localFSInputStream = new LocalFSInputStream(backendFileName);
-    fsDataInputStream = new FSDataInputStream(localFSInputStream);
+    Configuration conf = new Configuration();
+    Path filePath = new Path(backendFilePath);
+    FileSystem fs = filePath.getFileSystem(conf);
 
-    remoteReadRequestChain = new RemoteReadRequestChain(fsDataInputStream, localFileName);
+    remoteReadRequestChain = new RemoteReadRequestChain(fs, backendFilePath, localFileName);
   }
 
   @Test
@@ -160,7 +162,6 @@ public class TestRemoteReadRequestChain
   public void cleanup()
       throws IOException
   {
-    fsDataInputStream.close();
     backendFile.delete();
     File localFile = new File(localFileName);
     localFile.delete();

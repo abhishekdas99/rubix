@@ -13,6 +13,7 @@
 
 package com.qubole.rubix.bookkeeper;
 
+import com.codahale.metrics.MetricRegistry;
 import com.qubole.rubix.common.TestUtil;
 import com.qubole.rubix.core.utils.DataGen;
 import com.qubole.rubix.spi.CacheConfig;
@@ -80,7 +81,7 @@ public class TestRemoteFetchProcessor
   public void testMergeRequests() throws Exception
   {
     CacheConfig.setRemoteFetchProcessInterval(conf, TEST_REMOTE_FETCH_PROCESS_INTERVAL);
-    final RemoteFetchProcessor processor = new RemoteFetchProcessor(conf);
+    final RemoteFetchProcessor processor = new RemoteFetchProcessor(conf, new MetricRegistry());
 
     log.info("Merge Test 1 when requests are all from different file");
     for (int i = 0; i < 100; i++) {
@@ -145,7 +146,7 @@ public class TestRemoteFetchProcessor
     final int maxOffset = 400;
 
     CacheConfig.setRemoteFetchProcessInterval(conf, TEST_REMOTE_FETCH_PROCESS_INTERVAL);
-    final RemoteFetchProcessor processsor = new RemoteFetchProcessor(conf);
+    final RemoteFetchProcessor processsor = new RemoteFetchProcessor(conf, new MetricRegistry());
 
     for (int offset = 0; offset <= maxOffset; offset += offsetStep) {
       processsor.addToProcessQueue(backendPath.toString(), offset, 100, file.length(), (long) 10000);
@@ -172,7 +173,7 @@ public class TestRemoteFetchProcessor
     final int maxOffset = 1000;
 
     CacheConfig.setRemoteFetchProcessInterval(conf, TEST_REMOTE_FETCH_PROCESS_INTERVAL);
-    final RemoteFetchProcessor processsor = new RemoteFetchProcessor(conf);
+    final RemoteFetchProcessor processsor = new RemoteFetchProcessor(conf, new MetricRegistry());
 
     for (int offset = 0; offset <= maxOffset; offset += offsetStep) {
       processsor.addToProcessQueue(backendPath.toString(), offset, 100, file.length(), (long) 10000);

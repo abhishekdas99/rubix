@@ -130,14 +130,20 @@ public class ReadRequest
     return (int) (backendReadEnd - backendReadStart);
   }
 
-  public ReadRequest clone()
+  public ReadRequest clone(boolean copyDestBuffer)
   {
     ReadRequest otherRequest = new ReadRequest();
     otherRequest.backendReadStart = this.backendReadStart;
     otherRequest.backendReadEnd = this.backendReadEnd;
     otherRequest.actualReadStart = this.actualReadStart;
     otherRequest.actualReadEnd = this.actualReadEnd;
-    otherRequest.destBuffer = Arrays.copyOf(this.destBuffer, this.destBuffer.length);
+
+    if (copyDestBuffer) {
+      otherRequest.destBuffer = Arrays.copyOf(this.destBuffer, this.destBuffer.length);
+    }
+    else {
+      otherRequest.destBuffer = this.destBuffer;
+    }
     otherRequest.destBufferOffset = this.destBufferOffset;
     otherRequest.backendFileSize = this.backendFileSize;
 

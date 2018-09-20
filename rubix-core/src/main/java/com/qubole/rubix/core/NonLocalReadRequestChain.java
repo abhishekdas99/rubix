@@ -18,9 +18,7 @@ import com.qubole.rubix.spi.DataTransferHeader;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -179,14 +177,12 @@ public class NonLocalReadRequestChain extends ReadRequestChain
   private int directReadRequest(int index)
       throws Exception
   {
-    FSDataInputStream inputStream = remoteFileSystem.open(new Path(filePath));
-    directReadChain = new DirectReadRequestChain(inputStream);
+    directReadChain = new DirectReadRequestChain(remoteFileSystem, filePath);
     for (ReadRequest readRequest : readRequests.subList(index, readRequests.size())) {
       directReadChain.addReadRequest(readRequest);
     }
     directReadChain.lock();
     directRead = directReadChain.call();
-    inputStream.close();
     directReadChain = null;
     return (totalRead + directRead);
   }

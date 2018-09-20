@@ -295,6 +295,7 @@ public class TestBookKeeperServer extends BaseServerTest
   private MockStatsDThread startServersForTestingStatsDReporterOnMaster(int statsDPort, int testCasePort, boolean shouldReportMetrics) throws SocketException, InterruptedException
   {
     CacheConfig.setOnMaster(conf, true);
+    CacheConfig.setMetricsReporters(conf, "");
     if (shouldReportMetrics) {
       CacheConfig.setMetricsReporters(conf, MetricsReporter.STATSD.name());
     }
@@ -314,6 +315,7 @@ public class TestBookKeeperServer extends BaseServerTest
   private MockStatsDThread startServersForTestingStatsDReporterForWorker(int statsDPort, int testCasePort, boolean shouldReportMetrics) throws SocketException, InterruptedException
   {
     CacheConfig.setOnMaster(conf, false);
+    CacheConfig.setMetricsReporters(conf, "");
     if (shouldReportMetrics) {
       CacheConfig.setMetricsReporters(conf, MetricsReporter.STATSD.name());
     }

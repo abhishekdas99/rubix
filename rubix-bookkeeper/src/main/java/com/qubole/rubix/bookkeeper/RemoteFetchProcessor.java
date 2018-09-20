@@ -12,7 +12,11 @@
  */
 package com.qubole.rubix.bookkeeper;
 
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.AbstractScheduledService;
+import com.qubole.rubix.common.metrics.BookKeeperMetrics;
 import com.qubole.rubix.core.FileDownloadRequestChain;
 import com.qubole.rubix.spi.CacheConfig;
 import org.apache.commons.logging.Log;
@@ -33,6 +37,9 @@ public class RemoteFetchProcessor extends AbstractScheduledService
   private Configuration conf;
   private Queue<FetchRequest> processQueue;
   private FileDownloader downloader;
+  private MetricRegistry metrics;
+  private Counter totalDownloadRequests;
+  private Counter processedRequests;
 
   int processThreadInitalDelay;
   int processThreadInterval;
@@ -40,15 +47,33 @@ public class RemoteFetchProcessor extends AbstractScheduledService
 
   private static final Log log = LogFactory.getLog(RemoteFetchProcessor.class);
 
-  public RemoteFetchProcessor(Configuration conf)
+  public RemoteFetchProcessor(Configuration conf, MetricRegistry metrics)
   {
     this.conf = conf;
     this.processQueue = new ConcurrentLinkedQueue<FetchRequest>();
-    this.downloader = new FileDownloader(conf);
+    this.metrics = metrics;
+    this.downloader = new FileDownloader(conf, metrics);
 
     this.processThreadInitalDelay = CacheConfig.getProcessThreadInitialDelay(conf);
     this.processThreadInterval = CacheConfig.getProcessThreadInterval(conf);
     this.requestProcessDelay = CacheConfig.getRemoteFetchProcessInterval(conf);
+
+    initializeMetrics();
+  }
+
+  private void initializeMetrics()
+  {
+    totalDownloadRequests = metrics.counter(BookKeeperMetrics.CacheMetric.METRIC_BOOKKEEPER_TOTAL_ASYNC_REQUEST_COUNT.getMetricName());
+    processedRequests = metrics.counter(BookKeeperMetrics.CacheMetric.METRIC_BOOKKEEPER_PROCESSED_ASYNC_REQUEST_COUNT.getMetricName());
+
+    metrics.register(BookKeeperMetrics.CacheMetric.METRIC_BOOKKEEPER_ASYNC_QUEUE_SIZE_GAUGE.getMetricName(), new Gauge<Integer>()
+    {
+      @Override
+      public Integer getValue()
+      {
+        return processQueue.size();
+      }
+    });
   }
 
   public void addToProcessQueue(String remotePath, long offset, int length, long fileSize, long lastModified)
@@ -56,6 +81,7 @@ public class RemoteFetchProcessor extends AbstractScheduledService
     long requestedTime = System.currentTimeMillis();
     FetchRequest request = new FetchRequest(remotePath, offset, length, fileSize, lastModified, requestedTime);
     processQueue.add(request);
+    totalDownloadRequests.inc();
   }
 
   @Override
@@ -107,6 +133,7 @@ public class RemoteFetchProcessor extends AbstractScheduledService
       contextMap.get(request.getRemotePath()).addDownloadRange(request.getOffset(),
           request.getOffset() + request.getLength());
       processQueue.remove();
+      processedRequests.inc();
     }
 
     return contextMap;

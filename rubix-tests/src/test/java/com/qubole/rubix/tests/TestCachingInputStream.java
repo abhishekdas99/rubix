@@ -54,7 +54,7 @@ import static org.testng.Assert.assertTrue;
 public class TestCachingInputStream
 {
   int blockSize = 100;
-  private static final String testDirectoryPrefix = System.getProperty("java.io.tmpdir") + "/TestCachingInputStream/";
+  private static final String testDirectoryPrefix = "/Users/Abhishek/Desktop/TestCachingInputStream/"; //System.getProperty("java.io.tmpdir") + "/TestCachingInputStream/";
   String backendFileName = testDirectoryPrefix + "backendFile";
   Path backendPath = new Path("file:///" + backendFileName.substring(1));
 
@@ -133,7 +133,7 @@ public class TestCachingInputStream
     CacheConfig.setBlockSize(conf, blockSize);
 
     // This should be after server comes up else client could not be created
-    inputStream = new CachingInputStream(fsDataInputStream, conf, backendPath, file.length(),
+    inputStream = new CachingInputStream(conf, backendPath, file.length(),
         file.lastModified(), new CachingFileSystemStats(), ClusterType.TEST_CLUSTER_MANAGER,
         new BookKeeperFactory(), FileSystem.get(new URI(backendFileName), conf),
         CacheConfig.getBlockSize(conf), null);
@@ -165,6 +165,8 @@ public class TestCachingInputStream
   {
     // 1. Seek and read
     testCachingHelper();
+
+    Thread.sleep(2000);
 
     // 2. Delete backend file
     File file = new File(backendFileName);

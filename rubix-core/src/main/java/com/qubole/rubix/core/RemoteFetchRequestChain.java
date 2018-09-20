@@ -57,6 +57,9 @@ public class RemoteFetchRequestChain extends ReadRequestChain
     try {
       client = bookKeeperFactory.createBookKeeperClient(remoteNodeLocation, conf);
       for (ReadRequest request : readRequests) {
+        log.info("ReadRequest DirectRead : actualReadStart - " + request.actualReadStart + " actualReadEnd - " + request.actualReadEnd +
+            " BackEndReadStart - " + request.backendReadStart + " BackEndReadEnd - " + request.backendReadEnd + " DestBufferOffset - " + request.destBufferOffset);
+
         log.info("RemoteFetchRequest from : " + remoteNodeLocation + " Start : " + request.backendReadStart +
                 " of length " + request.getBackendReadLength());
         client.readData(remotePath, request.backendReadStart, request.getBackendReadLength(),

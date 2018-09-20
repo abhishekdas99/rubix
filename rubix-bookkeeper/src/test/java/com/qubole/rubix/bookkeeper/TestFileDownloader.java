@@ -13,6 +13,7 @@
 
 package com.qubole.rubix.bookkeeper;
 
+import com.codahale.metrics.MetricRegistry;
 import com.qubole.rubix.common.TestUtil;
 import com.qubole.rubix.core.FileDownloadRequestChain;
 import com.qubole.rubix.spi.CacheConfig;
@@ -91,7 +92,7 @@ public class TestFileDownloader
     context.addDownloadRange(100, 200);
     context.addDownloadRange(500, 800);
 
-    final FileDownloader downloader = new FileDownloader(conf);
+    final FileDownloader downloader = new FileDownloader(conf, new MetricRegistry());
     final List<FileDownloadRequestChain> requestChains = downloader.getFileDownloadRequestChains(contextMap);
 
     assertTrue(requestChains.size() == 2,
