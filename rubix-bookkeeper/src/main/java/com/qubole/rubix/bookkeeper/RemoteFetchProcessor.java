@@ -17,7 +17,6 @@ import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.util.concurrent.AbstractScheduledService;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
-import com.qubole.rubix.core.FileDownloadRequestChain;
 import com.qubole.rubix.spi.CacheConfig;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -40,6 +39,7 @@ public class RemoteFetchProcessor extends AbstractScheduledService
   private MetricRegistry metrics;
   private Counter totalDownloadRequests;
   private Counter processedRequests;
+  private BookKeeper bookKeeper;
 
   int processThreadInitalDelay;
   int processThreadInterval;
@@ -47,12 +47,13 @@ public class RemoteFetchProcessor extends AbstractScheduledService
 
   private static final Log log = LogFactory.getLog(RemoteFetchProcessor.class);
 
-  public RemoteFetchProcessor(Configuration conf, MetricRegistry metrics)
+  public RemoteFetchProcessor(BookKeeper bookKeeper, MetricRegistry metrics, Configuration conf)
   {
     this.conf = conf;
+    this.bookKeeper = bookKeeper;
     this.processQueue = new ConcurrentLinkedQueue<FetchRequest>();
     this.metrics = metrics;
-    this.downloader = new FileDownloader(conf, metrics);
+    this.downloader = new FileDownloader(bookKeeper, metrics, conf);
 
     this.processThreadInitalDelay = CacheConfig.getProcessThreadInitialDelay(conf);
     this.processThreadInterval = CacheConfig.getProcessThreadInterval(conf);

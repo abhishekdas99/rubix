@@ -18,7 +18,6 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.Range;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.qubole.rubix.common.metrics.BookKeeperMetrics;
-import com.qubole.rubix.core.FileDownloadRequestChain;
 import com.qubole.rubix.core.ReadRequest;
 import com.qubole.rubix.spi.CacheConfig;
 import com.qubole.rubix.spi.CacheUtil;
@@ -51,12 +50,14 @@ class FileDownloader
   int diskReadBufferSize;
   private MetricRegistry metrics;
   private Counter totalBytesDownloaded;
+  BookKeeper bookKeeper;
 
   private static final Log log = LogFactory.getLog(FileDownloader.class);
   private static DirectBufferPool bufferPool = new DirectBufferPool();
 
-  public FileDownloader(Configuration conf, MetricRegistry metrics)
+  public FileDownloader(BookKeeper bookKeeper, MetricRegistry metrics, Configuration conf)
   {
+    this.bookKeeper = bookKeeper;
     this.conf = conf;
     this.metrics = metrics;
     int numThreads = CacheConfig.getRemoteFetchThreads(conf);
@@ -90,7 +91,7 @@ class FileDownloader
       log.info("Processing Request for File : " + path.toString() + " LocalFile : " + localPath);
       ByteBuffer directWriteBuffer = bufferPool.getBuffer(diskReadBufferSize);
 
-      FileDownloadRequestChain requestChain = new FileDownloadRequestChain(fs, localPath,
+      FileDownloadRequestChain requestChain = new FileDownloadRequestChain(bookKeeper, fs, localPath,
           directWriteBuffer, conf, context.getRemoteFilePath(), context.getFileSize(),
           context.getLastModifiedTime());
 
@@ -109,7 +110,7 @@ class FileDownloader
     return readRequestChainList;
   }
 
-  protected void processDownloadRequests(List<FileDownloadRequestChain> readRequestChainList)
+  protected int processDownloadRequests(List<FileDownloadRequestChain> readRequestChainList)
   {
     int sizeRead = 0;
     List<Future<Integer>> futures = new ArrayList<Future<Integer>>();
@@ -143,5 +144,6 @@ class FileDownloader
       }
     }
     totalBytesDownloaded.inc(sizeRead);
+    return sizeRead;
   }
 }
