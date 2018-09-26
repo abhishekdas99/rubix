@@ -137,7 +137,6 @@ public class ReadRequest
     otherRequest.backendReadEnd = this.backendReadEnd;
     otherRequest.actualReadStart = this.actualReadStart;
     otherRequest.actualReadEnd = this.actualReadEnd;
-
     if (copyDestBuffer) {
       otherRequest.destBuffer = Arrays.copyOf(this.destBuffer, this.destBuffer.length);
     }

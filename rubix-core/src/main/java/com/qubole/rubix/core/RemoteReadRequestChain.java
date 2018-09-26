@@ -150,9 +150,11 @@ public class RemoteReadRequestChain extends ReadRequestChain
     finally {
       if (fileChannel != null) {
         fileChannel.close();
+        fileChannel = null;
       }
       if (inputStream != null) {
         inputStream.close();
+        inputStream = null;
       }
     }
   }

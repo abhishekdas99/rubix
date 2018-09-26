@@ -29,7 +29,6 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class DirectReadRequestChain extends ReadRequestChain
 {
-  //FSDataInputStream inputStream;
   FileSystem remoteFileSystem;
   String remotePath;
   int totalRead;
@@ -38,7 +37,6 @@ public class DirectReadRequestChain extends ReadRequestChain
 
   public DirectReadRequestChain(FileSystem remoteFileSystem, String remotePath)
   {
-    //this.inputStream = inputStream;
     this.remoteFileSystem = remoteFileSystem;
     this.remotePath = remotePath;
   }
@@ -69,10 +67,10 @@ public class DirectReadRequestChain extends ReadRequestChain
         if (cancelled) {
           propagateCancel(this.getClass().getName());
         }
-        log.info("ReadRequest DirectRead : actualReadStart - " + readRequest.actualReadStart + " actualReadEnd - " + readRequest.actualReadEnd +
-            " BackEndReadStart - " + readRequest.backendReadStart + " BackEndReadEnd - " + readRequest.backendReadEnd + " DestBufferOffset - " + readRequest.destBufferOffset);
+
         inputStream.seek(readRequest.actualReadStart);
         int nread = 0;
+
         while (nread < readRequest.getActualReadLength()) {
           int nbytes = inputStream.read(readRequest.getDestBuffer(), readRequest.getDestBufferOffset() + nread, readRequest.getActualReadLength() - nread);
           if (nbytes < 0) {
@@ -90,6 +88,7 @@ public class DirectReadRequestChain extends ReadRequestChain
     finally {
       if (inputStream != null) {
         inputStream.close();
+        inputStream = null;
       }
     }
   }

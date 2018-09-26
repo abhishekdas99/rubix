@@ -51,8 +51,6 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class CachingInputStream extends FSInputStream
 {
-  private FSDataInputStream inputStream;
-
   private long nextReadPosition;
   private long nextReadBlock;
   private int blockSize;
@@ -146,19 +144,6 @@ public class CachingInputStream extends FSInputStream
     this.diskReadBufferSize = CacheConfig.getDiskReadBufferSize(conf);
   }
 
-  private FSDataInputStream getParentDataInputStream() throws IOException
-  {
-    FSDataInputStream parentStream = null;
-
-    if (inputStream == null) {
-      parentStream = remoteFileSystem.open(new Path(remotePath), bufferSize);
-      return parentStream;
-    }
-    else {
-      return inputStream;
-    }
-  }
-
   @Override
   public void seek(long pos)
       throws IOException
@@ -204,7 +189,6 @@ public class CachingInputStream extends FSInputStream
     }
     catch (Exception e) {
       log.error(String.format("Failed to read from rubix for file %s position %d length %d. Falling back to remote", localPath, nextReadPosition, length), e);
-
       int read = readFullyDirect(buffer, offset, length);
       if (read > 0) {
         nextReadPosition += read;
@@ -234,6 +218,7 @@ public class CachingInputStream extends FSInputStream
     finally {
       if (inputStream != null) {
         inputStream.close();
+        inputStream = null;
       }
     }
     return nread;
@@ -540,9 +525,6 @@ public class CachingInputStream extends FSInputStream
   {
     returnBuffers();
     try {
-      if (inputStream != null) {
-        inputStream.close();
-      }
       if (bookKeeperClient != null) {
         bookKeeperClient.close();
       }
