@@ -480,8 +480,8 @@ public abstract class BookKeeper implements BookKeeperService.Iface
       int idx = 0;
       int bufferSize = (int) ((endBlock - startBlock) * CacheConfig.getBlockSize(conf));
       buffer = new byte[bufferSize];
-      CacheStatusRequest request = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock, clusterType);
-      List<BlockLocation> blockLocations = getCacheStatus(request);
+      CacheStatusRequest cacheRequest = new CacheStatusRequest(remotePath, fileSize, lastModified, startBlock, endBlock, clusterType);
+      List<BlockLocation> blockLocations = getCacheStatus(cacheRequest);
 
       for (long blockNum = startBlock; blockNum < endBlock; blockNum++, idx++) {
         long readStart = blockNum * blockSize;
