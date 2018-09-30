@@ -13,8 +13,11 @@
 package com.qubole.rubix.core;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.qubole.rubix.core.utils.BufferAllocator;
+import com.qubole.rubix.spi.CacheConfig;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 
 import java.io.FileInputStream;
@@ -34,26 +37,24 @@ public class CachedReadRequestChain extends ReadRequestChain
   private RandomAccessFile raf;
   private int read; // data read
   private FileSystem.Statistics statistics;
-
-  private ByteBuffer directBuffer;
+  private Configuration conf;
 
   private static final Log log = LogFactory.getLog(CachedReadRequestChain.class);
 
-  public CachedReadRequestChain(String fileToRead, ByteBuffer buffer, FileSystem.Statistics statistics)
-      throws IOException
+  public CachedReadRequestChain(String fileToRead, FileSystem.Statistics statistics, Configuration conf) throws IOException
   {
     this.raf = new RandomAccessFile(fileToRead, "r");
     FileInputStream fis = new FileInputStream(raf.getFD());
     fileChannel = fis.getChannel();
-    directBuffer = buffer;
     this.statistics = statistics;
+    this.conf = conf;
   }
 
   @VisibleForTesting
-  public CachedReadRequestChain(String fileToRead)
+  public CachedReadRequestChain(String fileToRead, Configuration conf)
       throws IOException
   {
-    this(fileToRead, ByteBuffer.allocate(1024), null);
+    this(fileToRead, null, conf);
   }
 
   @VisibleForTesting
@@ -74,39 +75,49 @@ public class CachedReadRequestChain extends ReadRequestChain
     }
 
     checkState(isLocked, "Trying to execute Chain without locking");
-    for (ReadRequest readRequest : readRequests) {
-      if (cancelled) {
-        propagateCancel(this.getClass().getName());
-      }
-      int nread = 0;
-      int leftToRead = readRequest.getActualReadLength();
-      log.debug(String.format("Processing readrequest %d-%d, length %d", readRequest.actualReadStart, readRequest.actualReadEnd, leftToRead));
-      while (nread < readRequest.getActualReadLength()) {
-        int readInThisCycle = Math.min(leftToRead, directBuffer.capacity());
-        directBuffer.clear();
-        int nbytes = fileChannel.read(directBuffer, readRequest.getActualReadStart() + nread);
-        if (nbytes <= 0) {
-          break;
+
+    ByteBuffer directBuffer = null;
+    try {
+      directBuffer = BufferAllocator.allocateByteBuffer(CacheConfig.getDiskReadBufferSize(conf));
+      for (ReadRequest readRequest : readRequests) {
+        if (cancelled) {
+          propagateCancel(this.getClass().getName());
         }
-        directBuffer.flip();
-        int transferBytes = Math.min(readInThisCycle, nbytes);
-        directBuffer.get(readRequest.getDestBuffer(), readRequest.getDestBufferOffset() + nread, transferBytes);
-        leftToRead -= transferBytes;
-        nread += transferBytes;
+        int nread = 0;
+        int leftToRead = readRequest.getActualReadLength();
+        log.debug(String.format("Processing readrequest %d-%d, length %d", readRequest.actualReadStart, readRequest.actualReadEnd, leftToRead));
+        while (nread < readRequest.getActualReadLength()) {
+          int readInThisCycle = Math.min(leftToRead, directBuffer.capacity());
+          directBuffer.clear();
+          int nbytes = fileChannel.read(directBuffer, readRequest.getActualReadStart() + nread);
+          if (nbytes <= 0) {
+            break;
+          }
+          directBuffer.flip();
+          int transferBytes = Math.min(readInThisCycle, nbytes);
+          directBuffer.get(readRequest.getDestBuffer(), readRequest.getDestBufferOffset() + nread, transferBytes);
+          leftToRead -= transferBytes;
+          nread += transferBytes;
+        }
+        log.debug(String.format("CachedFileRead copied data [%d - %d] at buffer offset %d",
+            readRequest.getActualReadStart(),
+            readRequest.getActualReadStart() + nread,
+            readRequest.getDestBufferOffset()));
+        read += nread;
       }
-      log.debug(String.format("CachedFileRead copied data [%d - %d] at buffer offset %d",
-          readRequest.getActualReadStart(),
-          readRequest.getActualReadStart() + nread,
-          readRequest.getDestBufferOffset()));
-      read += nread;
+      log.info(String.format("Read %d bytes from cached file", read));
+      fileChannel.close();
+      raf.close();
+      if (statistics != null) {
+        statistics.incrementBytesRead(read);
+      }
+      return read;
     }
-    log.info(String.format("Read %d bytes from cached file", read));
-    fileChannel.close();
-    raf.close();
-    if (statistics != null) {
-      statistics.incrementBytesRead(read);
+    finally {
+      if (directBuffer != null) {
+        BufferAllocator.releaseBuffer(directBuffer);
+      }
     }
-    return read;
   }
 
   public ReadRequestChainStats getStats()
