@@ -43,7 +43,6 @@ import com.qubole.rubix.spi.thrift.Location;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -469,7 +468,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     ByteBuffer byteBuffer = null;
     String localPath = CacheUtil.getLocalPath(remotePath, conf);
     FileSystem fs = null;
-    FSDataInputStream inputStream = null;
     Path path = new Path(remotePath);
     long startBlock = offset / blockSize;
     long endBlock = ((offset + (length - 1)) / CacheConfig.getBlockSize(conf)) + 1;
@@ -499,7 +497,6 @@ public abstract class BookKeeper implements BookKeeperService.Iface
         fs = path.getFileSystem(conf);
         log.info("Initializing FileSystem " + fs.toString() + " for Path " + path.toString());
         fs.initialize(path.toUri(), conf);
-        inputStream = fs.open(path, blockSize);
 
         RemoteReadRequestChain remoteReadRequestChain = new RemoteReadRequestChain(fs, remotePath, localPath, byteBuffer, buffer, new BookKeeperFactory(this));
 
@@ -529,9 +526,8 @@ public abstract class BookKeeper implements BookKeeperService.Iface
     }
     finally {
       buffer = null;
-      if (inputStream != null) {
+      if (fs != null) {
         try {
-          inputStream.close();
           fs.close();
         }
         catch (IOException e) {
