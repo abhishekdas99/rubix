@@ -152,7 +152,6 @@ public class TestFileDownloader
         .getCount() == expectedDownloadedDataSize, "Total downloaded bytes didn't match");
 
     cacheStatus = bookKeeper.getCacheStatus(request);
-    
     int i = 0;
     for (i = 0; i < 4; i++) {
       assertTrue(cacheStatus.get(i).getLocation() == Location.CACHED, "Data is not cached");
